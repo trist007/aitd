@@ -1,0 +1,56 @@
+version(2);
+project_name = "aitd";
+
+patterns = {
+    "*.c",
+    "*.cpp",
+    "*.ds",
+    "*.h",
+    "*.bat",
+    "*.sh",
+    "*.4coder",
+};
+blacklist_patterns = {
+    ".*",
+};
+
+load_paths = {
+    .win = {
+        { .path = ".", .recursive = true, .relative = true, },
+    },
+    .lin = {
+        { .path = ".", .recursive = true, .relative = true, },
+    },
+};
+
+commands = {
+    .run = {
+        .win = "C:\dev\aitd\aitd\code\run.bat",
+        .lin = "/home/trist007/dev/aitd/aitd/code/run.sh",
+        .out = "*run*",
+        .footer_panel = true,
+        .save_dirty_files = true,
+        .cursor_at_end = false,
+    },
+    .debug = {
+        .win = "C:\dev\aitd\aitd\code\debug.bat",
+        .out = "*debug*",
+        .footer_panel = true,
+        .save_dirty_files = true,
+        .cursor_at_end = false,
+    },
+    .build_dll = {
+        .win = "C:\dev\aitd\aitd\code\build_dll.bat",
+        .out = "*compilation*",
+        .footer_panel = true,
+        .save_dirty_files = true,
+        .cursor_at_end = false,
+    },
+};
+
+fkey_command = {
+    .F2 = "run",
+    .F3 = "debug",
+    .F5 = "build_dll",
+};
+
