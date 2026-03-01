@@ -131,6 +131,7 @@ BuildModelFromGLB(const char *filename)
     {
         cgltf_image *image = &data->images[1];
         cgltf_buffer_view *bv = image->buffer_view;
+        DebugLog("image_count: %d\n", (int)data->images_count);
         
         unsigned char *raw = (unsigned char *)bv->buffer->data + bv->offset;
         int width, height, channels;
@@ -216,7 +217,8 @@ BuildModelFromGLB(const char *filename)
                 float uv[2];
                 cgltf_accessor_read_float(acc, v, uv, 2);
                 uvs[v*2 + 0] = uv[0];
-                uvs[v*2 + 1] = 1.0f - uv[1]; // flip Y like you did in OBJ loader
+                //uvs[v*2 + 1] = 1.0f - uv[1]; // flip Y like you did in OBJ loader
+                uvs[v*2 + 1] = uv[1]; // flip Y like you did in OBJ loader
             }
             
             // assign UVs to faces
