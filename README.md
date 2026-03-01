@@ -13,5 +13,6 @@ Run `build.bat` from the `code` directory.
 ## Requirements
 
 - Windows
-- C11
+- C++11
 - OpenGL 1.1
+- cgltf and stb_image
