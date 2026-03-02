@@ -102,8 +102,7 @@ SetupPixelFormat(HDC hdc)
 void
 InitOpenGL(void)
 {
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    //glClearColor(1.0f, 0.0f, 1.0f, 0.0f);
+    glClearColor(COLOR_WHITE, 0.0f);
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_LIGHTING);
     glDisable(GL_CULL_FACE);
@@ -112,7 +111,6 @@ InitOpenGL(void)
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     gluPerspective(60.0, 1920.0/1080.0, 0.1, 100.0);
-    //gluPerspective(60.0, 320.0/200.0, 0.1, 1000.0);
     glMatrixMode(GL_MODELVIEW);
 }
 
@@ -163,7 +161,6 @@ Render(void)
     delta_time = (float)(current_time.QuadPart - last_time.QuadPart) / (float)perf_freq.QuadPart;
     last_time = current_time;
     
-    //anim_time += 1.0f / 24.0f;
     anim_time += delta_time;
     if(anim_time > 1.666f)
         anim_time = 0.0f;
@@ -254,82 +251,6 @@ WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             background = LoadTexture("../data/textures/background.bmp");
             player = BuildModelFromGLB("../data/models/player.glb");
             
-            cgltf_options options = {};
-            cgltf_data* data = 0;
-            cgltf_result result = cgltf_parse_file(&options, "../data/models/player.glb", &data);
-            
-            if(result != cgltf_result_success)
-            {
-                OutputDebugStringA("Failed to parse glb\n");
-                return(0);
-            }
-            
-            // Load actual binary
-            cgltf_load_buffers(&options, data, "player.glb");
-            
-            // Get mesh
-            cgltf_mesh *mesh = &data->meshes[0];
-            cgltf_primitive *prim = &mesh->primitives[0];
-            
-            // Walk attributes
-            for(int i = 0;
-                i < (int)prim->attributes_count;
-                i++)
-            {
-                cgltf_attribute *attr = &prim->attributes[i];
-                
-                if(attr->type == cgltf_attribute_type_position)
-                {
-                    // attr->data is a cfltf_accessor* with the vertex positions
-                }
-                else if(attr->type == cgltf_attribute_type_texcoord)
-                {
-                    // UV coords
-                }
-                else if(attr->type == cgltf_attribute_type_joints)
-                {
-                    // Which bones influence each vertex ( 4 per vertex )
-                }
-                else if(attr->type == cgltf_attribute_type_weights)
-                {
-                    // How much each bone influences each vertex (4 floas per vertex)
-                }
-            }
-            
-            // Animations
-            for(int i = 0;
-                i < (int)data->animations_count;
-                i++)
-            {
-                cgltf_animation *anim = &data->animations[i];
-                // anim->name, anim->channels, anim->samplers
-                // each channel drives one bone's translation/rotation/scale over time
-            }
-            
-            // Skeleton
-            for(int i = 0;
-                i < (int)data->skins_count;
-                i++)
-            {
-                cgltf_skin *skin = &data->skins[i];
-                // skin->joints[] = array of nodes (bones)
-                // skin->inverse_bind_matrices = the inverse bind pose matrices
-            }
-            
-            // Read float data out of an accessor cgltf with helper functions
-            /*
-            float pos[3];
-            cgltf_accessor_read_float(attr->data, vertex_index, pos, 3);
-            */
-            
-            if(result == cgltf_result_success)
-            {
-                // Do stuff
-                cgltf_free(data);
-            }
-            
-            if(player.vertex_count == 0)
-                OutputDebugStringA("Failed to load model\n");
         } break;
         
         case WM_DESTROY:

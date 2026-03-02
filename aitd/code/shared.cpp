@@ -420,7 +420,7 @@ BuildModelFromGLB(const char *filename)
     }
     
     cgltf_free(data);
-    return model;
+    return(model);
 }
 
 static float
