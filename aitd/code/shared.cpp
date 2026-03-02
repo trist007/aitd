@@ -10,34 +10,34 @@
 
 struct Mat4
 {
-    float m[16]; // columm major
+    float        m[16]; // columm major
 };
 
 struct BoneWeight
 {
-    int   joints[4];
-    float weights[4];
+    int          joints[4];
+    float        weights[4];
 };
 
 struct Bone
 {
-    char name[64];
-    int  parent;     // -1 if root
-    Mat4 inv_bind;   // inverse bind pose matrix
+    char         name[64];
+    int          parent;     // -1 if root
+    Mat4         inv_bind;   // inverse bind pose matrix
 };
 
 struct Keyframe
 {
-    float time;
-    float value[4];  // vec3 for translation/scale, quaternion for rotation
+    float        time;
+    float        value[4];  // vec3 for translation/scale, quaternion for rotation
 };
 
 struct AnimChannel
 {
-    int       bone_index;
-    int       type;    // 0=translation, 1=rotation, 2=scale
-    Keyframe *keyframes;
-    int       keyframe_count;
+    int          bone_index;
+    int          type;    // 0=translation, 1=rotation, 2=scale
+    Keyframe    *keyframes;
+    int          keyframe_count;
 };
 
 struct Animation
@@ -50,24 +50,24 @@ struct Animation
 
 struct MDLVertex
 {
-    float x, y, z;
+    float        x, y, z;
 };
 
 struct MDLFace
 {
     unsigned int v0, v1, v2;
-    float u[3], v[3];
-    float r, g, b;
+    float        u[3], v[3];
+    float        r, g, b;
 };
 
 struct Model
 {
     // Mesh
-    MDLVertex *vertices;
-    MDLFace   *faces;
-    int        vertex_count;
-    int        face_count;
-    GLuint     texture;
+    MDLVertex   *vertices;
+    MDLFace     *faces;
+    int          vertex_count;
+    int          face_count;
+    GLuint       texture;
     
     // Vertex Skinning (armature)
     BoneWeight  *bone_weights; // one per vertex
@@ -171,7 +171,8 @@ BuildModelFromGLB(const char *filename)
         {
             char debug[128];
             model.vertex_count = (int)prim->attributes[i].data->count;
-            sprintf_s(debug, sizeof(debug), "vertex_count: %d face_count: %d\n", model.vertex_count, model.face_count);
+            sprintf_s(debug, sizeof(debug), "vertex_count: %d attributes_count: %d\n",
+                      model.vertex_count, (int)prim->attributes_count);
             OutputDebugStringA(debug);
             break;
         }
@@ -183,7 +184,7 @@ BuildModelFromGLB(const char *filename)
     else
         model.face_count = model.vertex_count / 3;
     
-    DebugLog("vertex_count: %d face_count: %d\n", model.vertex_count, model.face_count);
+    DebugLog("face_count: %d\n", model.face_count);
     
     model.vertices    = (MDLVertex  *)malloc(sizeof(MDLVertex)  * model.vertex_count);
     model.faces       = (MDLFace    *)malloc(sizeof(MDLFace)    * model.face_count);
@@ -306,7 +307,7 @@ BuildModelFromGLB(const char *filename)
     }
     
     // ----------------------------------------------------------------
-    // SKELETON
+    // SKINNING
     // ----------------------------------------------------------------
     if(data->skins_count > 0)
     {

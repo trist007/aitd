@@ -24,6 +24,14 @@ load_paths = {
 };
 
 commands = {
+    .make = {
+        .win = "C:\dev\aitd\aitd\code\build-make.bat",
+        .lin = "/home/trist007/dev/aitd/aitd/code/run.sh",
+        .out = "*run*",
+        .footer_panel = true,
+        .save_dirty_files = true,
+        .cursor_at_end = false,
+    },
     .run = {
         .win = "C:\dev\aitd\aitd\code\run.bat",
         .lin = "/home/trist007/dev/aitd/aitd/code/run.sh",
@@ -39,9 +47,9 @@ commands = {
         .save_dirty_files = true,
         .cursor_at_end = false,
     },
-    .build_dll = {
-        .win = "C:\dev\aitd\aitd\code\build_dll.bat",
-        .out = "*compilation*",
+    .make_clean = {
+        .win = "C:\dev\aitd\aitd\code\build-make_clean.bat",
+        .out = "*run*",
         .footer_panel = true,
         .save_dirty_files = true,
         .cursor_at_end = false,
@@ -49,8 +57,9 @@ commands = {
 };
 
 fkey_command = {
+    .F1 = "make",
     .F2 = "run",
     .F3 = "debug",
-    .F5 = "build_dll",
+    .F5 = "make_clean",
 };
 
