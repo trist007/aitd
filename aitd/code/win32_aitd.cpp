@@ -72,6 +72,7 @@ struct VertexModel
 {
     float x, y, z;
     float u, v;
+    float r, g, b, a;
 };
 
 struct VertexBG
@@ -155,12 +156,14 @@ struct VS_IN
 {
     float3 pos : POSITION;
     float2 uv  : TEXCOORD;
+float4 color : COLOR;
 };
 
 struct VS_OUT
 {
     float4 pos : SV_POSITION;
     float2 uv  : TEXCOORD;
+float4 color : COLOR;
 };
 
 VS_OUT VSMain(VS_IN input)
@@ -168,12 +171,13 @@ VS_OUT VSMain(VS_IN input)
     VS_OUT o;
     o.pos = mul(mvp, float4(input.pos, 1.0f));
     o.uv  = input.uv;
+o.color = input.color;
     return o;
 }
 
 float4 PSMain(VS_OUT input) : SV_TARGET
 {
-    return tex.Sample(smp, input.uv);
+return input.color;
 }
 )";
 
@@ -360,8 +364,9 @@ InitD3D11(void)
     {
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT,0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0 },
     };
-    device->CreateInputLayout(ied_model, 2,
+    device->CreateInputLayout(ied_model, 3,
                               vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(),
                               &input_layout_model);
     vs_blob->Release(); ps_blob->Release();
@@ -469,6 +474,10 @@ RenderModel(Model *model, ID3D11ShaderResourceView *srv)
             verts[idx].z      = oz;
             verts[idx].u      = face->u[c];
             verts[idx].v      = face->v[c];
+            verts[idx].r      = face->r;
+            verts[idx].g      = face->g;
+            verts[idx].b      = face->b;
+            verts[idx].a      = 1.0f;
         }
     }
     
@@ -509,10 +518,12 @@ Render(void)
     last_time  = current_time;
     
     // Animate
+    //if(anim_time > 1.666f)
+    //anim_time = 0.0f;
+    if(delta_time > 0.1f)
+        delta_time = 0.1f;
     anim_time += delta_time;
-    if(anim_time > 1.666f)
-        anim_time = 0.0f;
-    UpdateAnimation(&player, 2, anim_time);
+    UpdateAnimation(&player, 1, anim_time);
     
     // Clear
     float clear_color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -636,13 +647,26 @@ WinMain(HINSTANCE hinstance, HINSTANCE hprev, LPSTR cmdline, int show)
     
     srv_background = LoadTextureFromFile("../data/textures/background.bmp");
     
-    player = BuildModelFromGLB("../data/models/player.glb");
+    player = BuildModelFromGLB("../data/models/Arwin2.glb");
     
     if(player.image_data)
     {
         srv_model = CreateSRVFromPixels(player.image_data, player.image_width, player.image_height);
         stbi_image_free(player.image_data);
         player.image_data = NULL;
+    }
+    
+    // debug - check idle animation translation keyframes
+    Animation *idle = &player.animations[1];
+    for(int c = 0; c < idle->channel_count; c++)
+    {
+        AnimChannel *ch = &idle->channels[c];
+        if(ch->type == 0) // translation only
+        {
+            DebugLog("bone %d translation keyframes:\n", ch->bone_index);
+            for(int k = 0; k < ch->keyframe_count; k++)
+                DebugLog("  kf[%d] t=%f y=%f\n", k, ch->keyframes[k].time, ch->keyframes[k].value[1]);
+        }
     }
     
     while(msg.message != WM_QUIT)

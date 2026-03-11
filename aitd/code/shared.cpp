@@ -132,9 +132,10 @@ BuildModelFromGLB(const char *filename)
     // ----------------------------------------------------------------
     // TEXTURE
     // ----------------------------------------------------------------
-    if(data->images_count > 1)
+    DebugLog("image_count: %d\n", (int)data->images_count);
+    if(data->images_count > 0)
     {
-        cgltf_image *image = &data->images[1];
+        cgltf_image *image = &data->images[0];
         cgltf_buffer_view *bv = image->buffer_view;
         DebugLog("image_count: %d\n", (int)data->images_count);
         
@@ -164,148 +165,142 @@ BuildModelFromGLB(const char *filename)
         return model;
     }
     
-    cgltf_primitive *prim = &data->meshes[0].primitives[0];
+    int prim_count = (int)data->meshes[0].primitives_count;
+    cgltf_primitive *prim_ptr[4];
     
-    // count vertices
-    for(int i = 0; i < (int)prim->attributes_count; i++)
+    // first pass - count totals across all primitives
+    int total_verts = 0;
+    int total_faces = 0;
+    for(int pi = 0; pi < prim_count; pi++)
     {
-        if(prim->attributes[i].type == cgltf_attribute_type_position)
+        prim_ptr[pi] = &data->meshes[0].primitives[pi];
+        for(int i = 0; i < (int)prim_ptr[pi]->attributes_count; i++)
         {
-            model.vertex_count = (int)prim->attributes[i].data->count;
-            DebugLog("vertex_count: %d attributes_count: %d\n",
-                     model.vertex_count, (int)prim->attributes_count);
-            break;
+            if(prim_ptr[pi]->attributes[i].type == cgltf_attribute_type_position)
+            {
+                total_verts += (int)prim_ptr[pi]->attributes[i].data->count;
+                break;
+            }
         }
+        total_faces += (int)prim_ptr[pi]->indices->count / 3;
+        DebugLog("prim %d: num_faces: %d\n", pi, (int)prim_ptr[pi]->indices->count / 3);
     }
     
-    // count faces
-    if(prim->indices)
-        model.face_count = (int)prim->indices->count / 3;
-    else
-        model.face_count = model.vertex_count / 3;
+    model.vertex_count  = total_verts;
+    model.face_count    = total_faces;
+    model.vertices      = (MDLVertex  *)malloc(sizeof(MDLVertex)  * total_verts);
+    model.faces         = (MDLFace    *)malloc(sizeof(MDLFace)    * total_faces);
+    model.bone_weights  = (BoneWeight *)malloc(sizeof(BoneWeight) * total_verts);
+    memset(model.bone_weights, 0, sizeof(BoneWeight) * total_verts);
     
-    DebugLog("face_count: %d\n", model.face_count);
+    DebugLog("total_verts: %d total_faces: %d\n", total_verts, total_faces);
     
-    model.vertices    = (MDLVertex  *)malloc(sizeof(MDLVertex)  * model.vertex_count);
-    model.faces       = (MDLFace    *)malloc(sizeof(MDLFace)    * model.face_count);
-    model.bone_weights= (BoneWeight *)malloc(sizeof(BoneWeight) * model.vertex_count);
-    memset(model.bone_weights, 0, sizeof(BoneWeight) * model.vertex_count);
+    // second pass - read data from each primitive
+    int vert_offset = 0;
+    int face_offset = 0;
     
-    // read attributes
-    for(int i = 0; i < (int)prim->attributes_count; i++)
+    for(int pi = 0; pi < prim_count; pi++)
     {
-        cgltf_attribute *attr = &prim->attributes[i];
-        cgltf_accessor  *acc  = attr->data;
+        cgltf_primitive *prim = prim_ptr[pi];
         
-        if(attr->type == cgltf_attribute_type_position)
+        int prim_verts = 0;
+        for(int i = 0; i < (int)prim->attributes_count; i++)
         {
-            for(int v = 0; v < model.vertex_count; v++)
+            if(prim->attributes[i].type == cgltf_attribute_type_position)
             {
-                float pos[3];
-                cgltf_accessor_read_float(acc, v, pos, 3);
-                model.vertices[v].x = pos[0];
-                model.vertices[v].y = pos[1];
-                model.vertices[v].z = pos[2];
+                prim_verts = (int)prim->attributes[i].data->count;
+                break;
             }
         }
-        else if(attr->type == cgltf_attribute_type_texcoord)
+        int prim_faces = (int)prim->indices->count / 3;
+        
+        // get material color for this primitive
+        float cr = 1.0f, cg = 1.0f, cb = 1.0f;
+        if(prim->material && prim->material->has_pbr_metallic_roughness)
         {
-            // store UVs temporarily — we'll assign per-face below
-            // for now store in a temp array
-            float *uvs = (float *)malloc(sizeof(float) * 2 * model.vertex_count);
-            for(int v = 0; v < model.vertex_count; v++)
-            {
-                float uv[2];
-                cgltf_accessor_read_float(acc, v, uv, 2);
-                uvs[v*2 + 0] = uv[0];
-                //uvs[v*2 + 1] = 1.0f - uv[1]; // flip Y like you did in OBJ loader
-                uvs[v*2 + 1] = uv[1]; // flip Y like you did in OBJ loader
-            }
+            cr = prim->material->pbr_metallic_roughness.base_color_factor[0];
+            cg = prim->material->pbr_metallic_roughness.base_color_factor[1];
+            cb = prim->material->pbr_metallic_roughness.base_color_factor[2];
+        }
+        
+        // read attributes
+        for(int i = 0; i < (int)prim->attributes_count; i++)
+        {
+            cgltf_attribute *attr = &prim->attributes[i];
+            cgltf_accessor  *acc  = attr->data;
             
-            // assign UVs to faces
-            if(prim->indices)
+            if(attr->type == cgltf_attribute_type_position)
             {
-                for(int f = 0; f < model.face_count; f++)
+                for(int v = 0; v < prim_verts; v++)
+                {
+                    float pos[3];
+                    cgltf_accessor_read_float(acc, v, pos, 3);
+                    model.vertices[vert_offset + v].x = pos[0];
+                    model.vertices[vert_offset + v].y = pos[1];
+                    model.vertices[vert_offset + v].z = pos[2];
+                }
+            }
+            else if(attr->type == cgltf_attribute_type_texcoord)
+            {
+                float *uvs = (float *)malloc(sizeof(float) * 2 * prim_verts);
+                for(int v = 0; v < prim_verts; v++)
+                {
+                    float uv[2];
+                    cgltf_accessor_read_float(acc, v, uv, 2);
+                    uvs[v*2 + 0] = uv[0];
+                    uvs[v*2 + 1] = uv[1];
+                }
+                for(int f = 0; f < prim_faces; f++)
                 {
                     for(int c = 0; c < 3; c++)
                     {
                         int idx = (int)cgltf_accessor_read_index(prim->indices, f*3 + c);
-                        model.faces[f].u[c] = uvs[idx*2 + 0];
-                        model.faces[f].v[c] = uvs[idx*2 + 1];
+                        model.faces[face_offset + f].u[c] = uvs[idx*2 + 0];
+                        model.faces[face_offset + f].v[c] = uvs[idx*2 + 1];
                     }
                 }
+                free(uvs);
             }
-            else
+            else if(attr->type == cgltf_attribute_type_joints)
             {
-                for(int f = 0; f < model.face_count; f++)
+                for(int v = 0; v < prim_verts; v++)
                 {
-                    for(int c = 0; c < 3; c++)
-                    {
-                        int idx = f*3 + c;
-                        model.faces[f].u[c] = uvs[idx*2 + 0];
-                        model.faces[f].v[c] = uvs[idx*2 + 1];
-                    }
+                    cgltf_uint j[4];
+                    cgltf_accessor_read_uint(acc, v, j, 4);
+                    model.bone_weights[vert_offset + v].joints[0] = (int)j[0];
+                    model.bone_weights[vert_offset + v].joints[1] = (int)j[1];
+                    model.bone_weights[vert_offset + v].joints[2] = (int)j[2];
+                    model.bone_weights[vert_offset + v].joints[3] = (int)j[3];
                 }
             }
-            free(uvs);
-        }
-        else if(attr->type == cgltf_attribute_type_joints)
-        {
-            for(int v = 0; v < model.vertex_count; v++)
+            else if(attr->type == cgltf_attribute_type_weights)
             {
-                cgltf_uint j[4];
-                cgltf_accessor_read_uint(acc, v, j, 4);
-                model.bone_weights[v].joints[0] = (int)j[0];
-                model.bone_weights[v].joints[1] = (int)j[1];
-                model.bone_weights[v].joints[2] = (int)j[2];
-                model.bone_weights[v].joints[3] = (int)j[3];
+                for(int v = 0; v < prim_verts; v++)
+                {
+                    float w[4];
+                    cgltf_accessor_read_float(acc, v, w, 4);
+                    model.bone_weights[vert_offset + v].weights[0] = w[0];
+                    model.bone_weights[vert_offset + v].weights[1] = w[1];
+                    model.bone_weights[vert_offset + v].weights[2] = w[2];
+                    model.bone_weights[vert_offset + v].weights[3] = w[3];
+                }
             }
         }
-        else if(attr->type == cgltf_attribute_type_weights)
+        
+        // read indices
+        for(int f = 0; f < prim_faces; f++)
         {
-            for(int v = 0; v < model.vertex_count; v++)
-            {
-                float w[4];
-                cgltf_accessor_read_float(acc, v, w, 4);
-                model.bone_weights[v].weights[0] = w[0];
-                model.bone_weights[v].weights[1] = w[1];
-                model.bone_weights[v].weights[2] = w[2];
-                model.bone_weights[v].weights[3] = w[3];
-            }
+            model.faces[face_offset + f].v0 = vert_offset + (unsigned int)cgltf_accessor_read_index(prim->indices, f*3 + 0);
+            model.faces[face_offset + f].v1 = vert_offset + (unsigned int)cgltf_accessor_read_index(prim->indices, f*3 + 1);
+            model.faces[face_offset + f].v2 = vert_offset + (unsigned int)cgltf_accessor_read_index(prim->indices, f*3 + 2);
+            model.faces[face_offset + f].r  = cr;
+            model.faces[face_offset + f].g  = cg;
+            model.faces[face_offset + f].b  = cb;
         }
+        
+        vert_offset += prim_verts;
+        face_offset += prim_faces;
     }
-    for(int i = 0; i < 10; i++)
-    {
-        DebugLog("v[%d]: %f %f %f\n", i, model.vertices[i].x, model.vertices[i].y, model.vertices[i].z);
-    }
-    
-    // read indices -> faces
-    if(prim->indices)
-    {
-        for(int f = 0; f < model.face_count; f++)
-        {
-            model.faces[f].v0 = (unsigned int)cgltf_accessor_read_index(prim->indices, f*3 + 0);
-            model.faces[f].v1 = (unsigned int)cgltf_accessor_read_index(prim->indices, f*3 + 1);
-            model.faces[f].v2 = (unsigned int)cgltf_accessor_read_index(prim->indices, f*3 + 2);
-            model.faces[f].r  = 1.0f;
-            model.faces[f].g  = 1.0f;
-            model.faces[f].b  = 1.0f;
-        }
-    }
-    else
-    {
-        // no index buffer, vertices are already in order
-        for(int f = 0; f < model.face_count; f++)
-        {
-            model.faces[f].v0 = f*3 + 0;
-            model.faces[f].v1 = f*3 + 1;
-            model.faces[f].v2 = f*3 + 2;
-            model.faces[f].r  = 1.0f;
-            model.faces[f].g  = 1.0f;
-            model.faces[f].b  = 1.0f;
-        }
-    }
-    
     // ----------------------------------------------------------------
     // SKINNING
     // ----------------------------------------------------------------
@@ -432,6 +427,39 @@ LerpFloat(float a, float b, float t)
 static void
 SlerpQuat(float *out, float *a, float *b, float t)
 {
+    float bx = b[0], by = b[1], bz = b[2], bw = b[3];  // local copy
+    
+    float dot = a[0]*bx + a[1]*by + a[2]*bz + a[3]*bw;
+    
+    if(dot < 0.0f)
+    {
+        bx = -bx; by = -by; bz = -bz; bw = -bw;
+        dot = -dot;
+    }
+    
+    if(dot > 0.9995f)
+    {
+        out[0] = LerpFloat(a[0], bx, t);
+        out[1] = LerpFloat(a[1], by, t);
+        out[2] = LerpFloat(a[2], bz, t);
+        out[3] = LerpFloat(a[3], bw, t);
+        return;
+    }
+    
+    float angle = acosf(dot);
+    float s     = sinf(angle);
+    float ta    = sinf((1.0f - t) * angle) / s;
+    float tb    = sinf(t * angle) / s;
+    
+    out[0] = ta*a[0] + tb*bx;
+    out[1] = ta*a[1] + tb*by;
+    out[2] = ta*a[2] + tb*bz;
+    out[3] = ta*a[3] + tb*bw;
+}
+/*
+static void
+SlerpQuat(float *out, float *a, float *b, float t)
+{
     float dot = a[0]*b[0] + a[1]*b[1] + a[2]*b[2] + a[3]*b[3];
     
     // if dot is negative flip b to take shortest path
@@ -461,6 +489,7 @@ SlerpQuat(float *out, float *a, float *b, float t)
     out[2] = ta*a[2] + tb*b[2];
     out[3] = ta*a[3] + tb*b[3];
 }
+*/
 
 static void
 Mat4Identity(Mat4 *m)
@@ -531,8 +560,7 @@ SampleChannel(AnimChannel *ch, float time, float *out)
 {
     if(ch->keyframe_count == 0) return;
     
-    // single keyframe - just use it
-    if(ch->keyframe_count == 1)
+    if(time <= ch->keyframes[0].time)
     {
         memcpy(out, ch->keyframes[0].value, sizeof(float) * 4);
         return;
