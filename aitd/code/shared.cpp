@@ -67,7 +67,12 @@ struct Model
     MDLFace     *faces;
     int          vertex_count;
     int          face_count;
-    GLuint       texture;
+    
+    // Texture is managed by main.cpp (D3D11 SRV)
+    // raw image data stored here so main.cpp can upload it
+    unsigned char *image_data;   // RGBA pixels, free after upload
+    int            image_width;
+    int            image_height;
     
     // Vertex Skinning (armature)
     BoneWeight  *bone_weights; // one per vertex
@@ -127,7 +132,7 @@ BuildModelFromGLB(const char *filename)
     // ----------------------------------------------------------------
     // TEXTURE
     // ----------------------------------------------------------------
-    if(data->images_count > 0)
+    if(data->images_count > 1)
     {
         cgltf_image *image = &data->images[1];
         cgltf_buffer_view *bv = image->buffer_view;
@@ -136,15 +141,12 @@ BuildModelFromGLB(const char *filename)
         unsigned char *raw = (unsigned char *)bv->buffer->data + bv->offset;
         int width, height, channels;
         unsigned char *pixels = stbi_load_from_memory(raw, (int)bv->size,
-                                                      &width, &height, &channels, 3);
+                                                      &width, &height, &channels, 4);
         if(pixels)
         {
-            glGenTextures(1, &model.texture);
-            glBindTexture(GL_TEXTURE_2D, model.texture);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, pixels);
-            stbi_image_free(pixels);
+            model.image_data = pixels;
+            model.image_width = width;
+            model.image_height = height;
         }
         else
         {
@@ -169,11 +171,9 @@ BuildModelFromGLB(const char *filename)
     {
         if(prim->attributes[i].type == cgltf_attribute_type_position)
         {
-            char debug[128];
             model.vertex_count = (int)prim->attributes[i].data->count;
-            sprintf_s(debug, sizeof(debug), "vertex_count: %d attributes_count: %d\n",
-                      model.vertex_count, (int)prim->attributes_count);
-            OutputDebugStringA(debug);
+            DebugLog("vertex_count: %d attributes_count: %d\n",
+                     model.vertex_count, (int)prim->attributes_count);
             break;
         }
     }

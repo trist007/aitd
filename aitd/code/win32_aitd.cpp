@@ -1,7 +1,14 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <GL/gl.h>
-#include <GL/glu.h>
+#include <d3d11.h>
+#include <d3dcompiler.h>
+#include <dxgi.h>
+#include <math.h>
+#include <stdio.h>
+
+#pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "d3dcompiler.lib")
+#pragma comment(lib, "dxgi.lib")
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -12,53 +19,440 @@
 #include "colors.h"
 #include "shared.cpp"
 
-// Globals
-HWND hwnd;
-HDC hdc;
-HGLRC hglrc;
-GLuint background;
+// -----------------------------------------------------------------------
+// D3D11 globals
+// -----------------------------------------------------------------------
+HWND                    hwnd;
+IDXGISwapChain         *swapchain;
+ID3D11Device           *device;
+ID3D11DeviceContext    *context;
+ID3D11RenderTargetView *render_target;
+ID3D11DepthStencilView *depth_stencil_view;
+ID3D11Texture2D        *depth_stencil_tex;
+
+// Shaders
+ID3D11VertexShader     *vs_model;
+ID3D11PixelShader      *ps_model;
+ID3D11VertexShader     *vs_background;
+ID3D11PixelShader      *ps_background;
+ID3D11InputLayout      *input_layout_model;
+ID3D11InputLayout      *input_layout_bg;
+
+// Buffers
+ID3D11Buffer           *vb_model;       // skinned verts uploaded each frame (CPU skinning)
+ID3D11Buffer           *ib_model;
+ID3D11Buffer           *vb_background;
+ID3D11Buffer           *cb_per_frame;
+
+// Sampler / rasterizer
+ID3D11SamplerState     *sampler;
+ID3D11RasterizerState  *raster;
+ID3D11DepthStencilState *ds_enabled;
+ID3D11DepthStencilState *ds_disabled;
+
+// Textures
+ID3D11ShaderResourceView *srv_background;
+ID3D11ShaderResourceView *srv_model;
+
+// Game state
 Model player;
-float anim_time = 0.0f;
+float anim_time    = 0.0f;
 float player_angle = -90.0f;
-float player_y = -0.6f;
+float player_y     = -0.6f;
 
 // Delta time
 LARGE_INTEGER perf_freq;
 LARGE_INTEGER last_time;
-float delta_time;
+float         delta_time;
 
-void
-RenderModel(Model *model)
+// -----------------------------------------------------------------------
+// Vertex layouts
+// -----------------------------------------------------------------------
+struct VertexModel
 {
-    if(model->texture)
-    {
-        glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, model->texture);
-    }
+    float x, y, z;
+    float u, v;
+};
+
+struct VertexBG
+{
+    float x, y;
+    float u, v;
+};
+
+// -----------------------------------------------------------------------
+// Constant buffer layout  (must be 16-byte aligned)
+// -----------------------------------------------------------------------
+struct CBPerFrame
+{
+    float mvp[16];
+};
+
+// -----------------------------------------------------------------------
+// Simple math helpers
+// -----------------------------------------------------------------------
+static void
+MatMul(float *out, const float *a, const float *b)
+{
+    float tmp[16] = {};
+    for(int col = 0; col < 4; col++)
+        for(int row = 0; row < 4; row++)
+        for(int k = 0; k < 4; k++)
+        tmp[col*4+row] += a[k*4+row] * b[col*4+k];
+    for(int i = 0; i < 16; i++) out[i] = tmp[i];
+}
+
+static void
+MatIdentity(float *m)
+{
+    memset(m, 0, 64);
+    m[0] = m[5] = m[10] = m[15] = 1.0f;
+}
+
+static void
+MatTranslate(float *m, float x, float y, float z)
+{
+    MatIdentity(m);
+    m[12] = x; m[13] = y; m[14] = z;
+}
+
+static void
+MatRotateY(float *m, float deg)
+{
+    float r = deg * 3.14159265f / 180.0f;
+    MatIdentity(m);
+    m[0]  =  cosf(r);
+    m[2]  =  sinf(r);
+    m[8]  = -sinf(r);
+    m[10] =  cosf(r);
+}
+
+static void
+MatPerspective(float *m, float fov_deg, float aspect, float znear, float zfar)
+{
+    memset(m, 0, 64);
+    float f = 1.0f / tanf(fov_deg * 0.5f * 3.14159265f / 180.0f);
+    m[0]  = f / aspect;
+    m[5]  = f;
+    m[10] = zfar / (znear - zfar);
+    m[11] = -1.0f;
+    m[14] = (znear * zfar) / (znear - zfar);
+}
+
+// -----------------------------------------------------------------------
+// HLSL shaders (compiled at runtime)
+// -----------------------------------------------------------------------
+static const char *shader_model_src = R"(
+cbuffer CB : register(b0)
+{
+    float4x4 mvp;
+};
+
+Texture2D    tex : register(t0);
+SamplerState smp : register(s0);
+
+struct VS_IN
+{
+    float3 pos : POSITION;
+    float2 uv  : TEXCOORD;
+};
+
+struct VS_OUT
+{
+    float4 pos : SV_POSITION;
+    float2 uv  : TEXCOORD;
+};
+
+VS_OUT VSMain(VS_IN input)
+{
+    VS_OUT o;
+    o.pos = mul(mvp, float4(input.pos, 1.0f));
+    o.uv  = input.uv;
+    return o;
+}
+
+float4 PSMain(VS_OUT input) : SV_TARGET
+{
+    return tex.Sample(smp, input.uv);
+}
+)";
+
+static const char *shader_bg_src = R"(
+Texture2D    tex : register(t0);
+SamplerState smp : register(s0);
+
+struct VS_IN
+{
+    float2 pos : POSITION;
+    float2 uv  : TEXCOORD;
+};
+
+struct VS_OUT
+{
+    float4 pos : SV_POSITION;
+    float2 uv  : TEXCOORD;
+};
+
+VS_OUT VSMain(VS_IN input)
+{
+    VS_OUT o;
+    o.pos = float4(input.pos, 0.0f, 1.0f);
+    o.uv  = input.uv;
+    return o;
+}
+
+float4 PSMain(VS_OUT input) : SV_TARGET
+{
+    return tex.Sample(smp, input.uv);
+}
+)";
+
+// -----------------------------------------------------------------------
+// Load texture from raw pixel data into SRV
+// -----------------------------------------------------------------------
+static ID3D11ShaderResourceView *
+CreateSRVFromPixels(unsigned char *pixels, int width, int height)
+{
+    D3D11_TEXTURE2D_DESC td = {};
+    td.Width            = (UINT)width;
+    td.Height           = (UINT)height;
+    td.MipLevels        = 1;
+    td.ArraySize        = 1;
+    td.Format           = DXGI_FORMAT_R8G8B8A8_UNORM;
+    td.SampleDesc.Count = 1;
+    td.Usage            = D3D11_USAGE_DEFAULT;
+    td.BindFlags        = D3D11_BIND_SHADER_RESOURCE;
     
-    glBegin(GL_TRIANGLES);
+    D3D11_SUBRESOURCE_DATA sd = {};
+    sd.pSysMem          = pixels;
+    sd.SysMemPitch      = (UINT)(width * 4);
+    
+    ID3D11Texture2D          *tex = NULL;
+    ID3D11ShaderResourceView *srv = NULL;
+    device->CreateTexture2D(&td, &sd, &tex);
+    device->CreateShaderResourceView(tex, NULL, &srv);
+    tex->Release();
+    return srv;
+}
+
+static ID3D11ShaderResourceView *
+LoadTextureFromFile(const char *filename)
+{
+    int w, h, ch;
+    unsigned char *pixels = stbi_load(filename, &w, &h, &ch, 4);
+    if(!pixels)
+    {
+        OutputDebugStringA("Failed to load texture\n");
+        return NULL;
+    }
+    ID3D11ShaderResourceView *srv = CreateSRVFromPixels(pixels, w, h);
+    stbi_image_free(pixels);
+    return srv;
+}
+
+static ID3D11ShaderResourceView *
+LoadTextureFromMemory(unsigned char *raw, int raw_size)
+{
+    int w, h, ch;
+    unsigned char *pixels = stbi_load_from_memory(raw, raw_size, &w, &h, &ch, 4);
+    if(!pixels)
+    {
+        OutputDebugStringA("Failed to decode embedded texture\n");
+        return NULL;
+    }
+    ID3D11ShaderResourceView *srv = CreateSRVFromPixels(pixels, w, h);
+    stbi_image_free(pixels);
+    return srv;
+}
+
+// -----------------------------------------------------------------------
+// Init D3D11
+// -----------------------------------------------------------------------
+static void
+InitD3D11(void)
+{
+    DXGI_SWAP_CHAIN_DESC scd       = {};
+    scd.BufferCount                = 1;
+    scd.BufferDesc.Width           = 1920;
+    scd.BufferDesc.Height          = 1080;
+    scd.BufferDesc.Format          = DXGI_FORMAT_R8G8B8A8_UNORM;
+    scd.BufferDesc.RefreshRate.Numerator   = 60;
+    scd.BufferDesc.RefreshRate.Denominator = 1;
+    scd.BufferUsage                = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    scd.OutputWindow               = hwnd;
+    scd.SampleDesc.Count           = 1;
+    scd.Windowed                   = TRUE;
+    
+    D3D11CreateDeviceAndSwapChain(
+                                  NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0,
+                                  NULL, 0, D3D11_SDK_VERSION,
+                                  &scd, &swapchain, &device, NULL, &context
+                                  );
+    
+    // Render target
+    ID3D11Texture2D *backbuf = NULL;
+    swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void **)&backbuf);
+    device->CreateRenderTargetView(backbuf, NULL, &render_target);
+    backbuf->Release();
+    
+    // Depth stencil
+    D3D11_TEXTURE2D_DESC dsd = {};
+    dsd.Width            = 1920;
+    dsd.Height           = 1080;
+    dsd.MipLevels        = 1;
+    dsd.ArraySize        = 1;
+    dsd.Format           = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    dsd.SampleDesc.Count = 1;
+    dsd.Usage            = D3D11_USAGE_DEFAULT;
+    dsd.BindFlags        = D3D11_BIND_DEPTH_STENCIL;
+    device->CreateTexture2D(&dsd, NULL, &depth_stencil_tex);
+    device->CreateDepthStencilView(depth_stencil_tex, NULL, &depth_stencil_view);
+    
+    context->OMSetRenderTargets(1, &render_target, depth_stencil_view);
+    
+    // Viewport
+    D3D11_VIEWPORT vp = {};
+    vp.Width    = 1920.0f;
+    vp.Height   = 1080.0f;
+    vp.MaxDepth = 1.0f;
+    context->RSSetViewports(1, &vp);
+    
+    // Sampler
+    D3D11_SAMPLER_DESC sampd = {};
+    sampd.Filter   = D3D11_FILTER_MIN_MAG_MIP_POINT;
+    sampd.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampd.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampd.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    device->CreateSamplerState(&sampd, &sampler);
+    
+    // Rasterizer (no culling for now, matches original)
+    D3D11_RASTERIZER_DESC rd = {};
+    rd.FillMode = D3D11_FILL_SOLID;
+    rd.CullMode = D3D11_CULL_NONE;
+    device->CreateRasterizerState(&rd, &raster);
+    context->RSSetState(raster);
+    
+    // Depth stencil states
+    D3D11_DEPTH_STENCIL_DESC ds = {};
+    ds.DepthEnable    = TRUE;
+    ds.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+    ds.DepthFunc      = D3D11_COMPARISON_LESS;
+    device->CreateDepthStencilState(&ds, &ds_enabled);
+    
+    ds.DepthEnable = FALSE;
+    device->CreateDepthStencilState(&ds, &ds_disabled);
+    
+    // Compile model shader
+    ID3DBlob *vs_blob = NULL, *ps_blob = NULL, *err = NULL;
+    
+    D3DCompile(shader_model_src, strlen(shader_model_src), NULL, NULL, NULL,
+               "VSMain", "vs_5_0", 0, 0, &vs_blob, &err);
+    if(err) { OutputDebugStringA((char *)err->GetBufferPointer()); err->Release(); err = NULL; }
+    
+    D3DCompile(shader_model_src, strlen(shader_model_src), NULL, NULL, NULL,
+               "PSMain", "ps_5_0", 0, 0, &ps_blob, &err);
+    if(err) { OutputDebugStringA((char *)err->GetBufferPointer()); err->Release(); err = NULL; }
+    
+    device->CreateVertexShader(vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(), NULL, &vs_model);
+    device->CreatePixelShader (ps_blob->GetBufferPointer(), ps_blob->GetBufferSize(), NULL, &ps_model);
+    
+    D3D11_INPUT_ELEMENT_DESC ied_model[] =
+    {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+    };
+    device->CreateInputLayout(ied_model, 2,
+                              vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(),
+                              &input_layout_model);
+    vs_blob->Release(); ps_blob->Release();
+    
+    // Compile background shader
+    D3DCompile(shader_bg_src, strlen(shader_bg_src), NULL, NULL, NULL,
+               "VSMain", "vs_5_0", 0, 0, &vs_blob, &err);
+    if(err) { OutputDebugStringA((char *)err->GetBufferPointer()); err->Release(); err = NULL; }
+    
+    D3DCompile(shader_bg_src, strlen(shader_bg_src), NULL, NULL, NULL,
+               "PSMain", "ps_5_0", 0, 0, &ps_blob, &err);
+    if(err) { OutputDebugStringA((char *)err->GetBufferPointer()); err->Release(); err = NULL; }
+    
+    device->CreateVertexShader(vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(), NULL, &vs_background);
+    device->CreatePixelShader (ps_blob->GetBufferPointer(), ps_blob->GetBufferSize(), NULL, &ps_background);
+    
+    D3D11_INPUT_ELEMENT_DESC ied_bg[] =
+    {
+        { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 8, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+    };
+    device->CreateInputLayout(ied_bg, 2,
+                              vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(),
+                              &input_layout_bg);
+    vs_blob->Release(); ps_blob->Release();
+    
+    // Background quad vertex buffer
+    VertexBG bg_verts[] =
+    {
+        { -1.0f, -1.0f,  0.0f, 1.0f },
+        { -1.0f,  1.0f,  0.0f, 0.0f },
+        {  1.0f,  1.0f,  1.0f, 0.0f },
+        { -1.0f, -1.0f,  0.0f, 1.0f },
+        {  1.0f,  1.0f,  1.0f, 0.0f },
+        {  1.0f, -1.0f,  1.0f, 1.0f },
+    };
+    D3D11_BUFFER_DESC bd = {};
+    bd.Usage     = D3D11_USAGE_DEFAULT;
+    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    bd.ByteWidth = sizeof(bg_verts);
+    D3D11_SUBRESOURCE_DATA sd = {};
+    sd.pSysMem = bg_verts;
+    device->CreateBuffer(&bd, &sd, &vb_background);
+    
+    // Model vertex buffer (dynamic - CPU skinning writes each frame)
+    D3D11_BUFFER_DESC mvbd = {};
+    mvbd.Usage          = D3D11_USAGE_DYNAMIC;
+    mvbd.BindFlags      = D3D11_BIND_VERTEX_BUFFER;
+    mvbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    mvbd.ByteWidth      = sizeof(VertexModel) * 65536; // enough for any mesh
+    device->CreateBuffer(&mvbd, NULL, &vb_model);
+    
+    // Constant buffer
+    D3D11_BUFFER_DESC cbd = {};
+    cbd.Usage          = D3D11_USAGE_DYNAMIC;
+    cbd.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
+    cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    cbd.ByteWidth      = sizeof(CBPerFrame);
+    device->CreateBuffer(&cbd, NULL, &cb_per_frame);
+}
+
+// -----------------------------------------------------------------------
+// Render model  (CPU skinning, upload verts each frame)
+// -----------------------------------------------------------------------
+static void
+RenderModel(Model *model, ID3D11ShaderResourceView *srv)
+{
+    // Build skinned verts on CPU (same logic as original)
+    int total_verts = model->face_count * 3;
+    VertexModel *verts = (VertexModel *)malloc(sizeof(VertexModel) * total_verts);
+    
     for(int i = 0; i < model->face_count; i++)
     {
         MDLFace *face = &model->faces[i];
-        
         for(int c = 0; c < 3; c++)
         {
             unsigned int vi = (c == 0) ? face->v0 : (c == 1) ? face->v1 : face->v2;
-            MDLVertex *v = &model->vertices[vi];
+            MDLVertex *v    = &model->vertices[vi];
             
             float px = v->x, py = v->y, pz = v->z;
-            float ox = 0, oy = 0, oz = 0;
+            float ox = 0,    oy = 0,    oz = 0;
             
             if(model->bone_count > 0 && model->bone_weights)
             {
                 for(int b = 0; b < 4; b++)
                 {
-                    float w = model->bone_weights[vi].weights[b];
+                    float w  = model->bone_weights[vi].weights[b];
                     if(w == 0.0f) continue;
-                    int bi = model->bone_weights[vi].joints[b];
+                    int   bi = model->bone_weights[vi].joints[b];
                     if(bi < 0 || bi >= model->bone_count) continue;
                     Mat4 *bm = &model->bone_matrices[bi];
-                    
                     ox += w * (bm->m[0]*px + bm->m[4]*py + bm->m[8]*pz  + bm->m[12]);
                     oy += w * (bm->m[1]*px + bm->m[5]*py + bm->m[9]*pz  + bm->m[13]);
                     oz += w * (bm->m[2]*px + bm->m[6]*py + bm->m[10]*pz + bm->m[14]);
@@ -69,219 +463,140 @@ RenderModel(Model *model)
                 ox = px; oy = py; oz = pz;
             }
             
-            glColor3f(1.0f, 1.0f, 1.0f);
-            glTexCoord2f(face->u[c], face->v[c]);
-            glVertex3f(ox, oy, oz);
+            int idx           = i*3 + c;
+            verts[idx].x      = ox;
+            verts[idx].y      = oy;
+            verts[idx].z      = oz;
+            verts[idx].u      = face->u[c];
+            verts[idx].v      = face->v[c];
         }
     }
     
-    glEnd();
+    // Upload to GPU
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    context->Map(vb_model, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    memcpy(mapped.pData, verts, sizeof(VertexModel) * total_verts);
+    context->Unmap(vb_model, 0);
+    free(verts);
     
-    if(model->texture)
-        glDisable(GL_TEXTURE_2D);
+    // Set shaders
+    context->VSSetShader(vs_model, NULL, 0);
+    context->PSSetShader(ps_model, NULL, 0);
+    context->IASetInputLayout(input_layout_model);
+    
+    UINT stride = sizeof(VertexModel);
+    UINT offset = 0;
+    context->IASetVertexBuffers(0, 1, &vb_model, &stride, &offset);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    
+    context->PSSetShaderResources(0, 1, &srv);
+    context->PSSetSamplers(0, 1, &sampler);
+    context->VSSetConstantBuffers(0, 1, &cb_per_frame);
+    
+    context->Draw(total_verts, 0);
 }
 
-void
-SetupPixelFormat(HDC hdc)
-{
-    PIXELFORMATDESCRIPTOR pfd = {};
-    int pixelformat;
-    
-    pfd.nSize        = sizeof(PIXELFORMATDESCRIPTOR);
-    pfd.nVersion     = 1;
-    pfd.dwFlags      = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-    pfd.dwLayerMask  = PFD_MAIN_PLANE;
-    pfd.iPixelType   = PFD_TYPE_RGBA;
-    pfd.cColorBits   = 32;
-    pfd.cDepthBits   = 16;
-    
-    pixelformat = ChoosePixelFormat(hdc, &pfd);
-    SetPixelFormat(hdc, pixelformat, &pfd);
-}
-
-void
-InitOpenGL(void)
-{
-    glClearColor(COLOR_WHITE, 0.0f);
-    glEnable(GL_DEPTH_TEST);
-    glDisable(GL_LIGHTING);
-    glDisable(GL_CULL_FACE);
-    glShadeModel(GL_FLAT);
-    
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluPerspective(60.0, 1920.0/1080.0, 0.1, 100.0);
-    glMatrixMode(GL_MODELVIEW);
-}
-
-GLuint
-LoadTexture(const char *filename)
-{
-    GLuint texture;
-    int width, height, channels;
-    unsigned char *data;
-    
-    data = stbi_load(filename, &width, &height, &channels, 3);
-    if(!data)
-    {
-        // Failed to load
-        OutputDebugStringA("Failed to load texture\n");
-        return(0);
-    }
-    
-    char debug[128];
-    sprintf_s(debug, sizeof(debug), "Loaded: %dx%d channels:%d\n", width, height, channels);
-    OutputDebugStringA(debug);
-    
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0,
-                 GL_RGB, GL_UNSIGNED_BYTE, data);
-    
-    GLenum err = glGetError();
-    if(err != GL_NO_ERROR)
-    {
-        OutputDebugStringA("Texture upload error\n");
-    }
-    
-    stbi_image_free(data);
-    
-    return(texture);
-}
-
+// -----------------------------------------------------------------------
+// Render
+// -----------------------------------------------------------------------
 void
 Render(void)
 {
+    // Delta time
     LARGE_INTEGER current_time;
     QueryPerformanceCounter(&current_time);
     delta_time = (float)(current_time.QuadPart - last_time.QuadPart) / (float)perf_freq.QuadPart;
-    last_time = current_time;
+    last_time  = current_time;
     
+    // Animate
     anim_time += delta_time;
     if(anim_time > 1.666f)
         anim_time = 0.0f;
     UpdateAnimation(&player, 2, anim_time);
     
-    static bool anim_printed = false;
-    if(!anim_printed)
-    {
-        DebugLog("anim[2] duration=%f channels=%d\n", player.animations[2].duration, player.animations[2].channel_count);
-        AnimChannel *ch = &player.animations[2].channels[0];
-        for(int i = 0; i < ch->keyframe_count; i++)
-            DebugLog("kf[%d] t=%f\n", i, ch->keyframes[i].time);
-        anim_printed = true;
-    }
+    // Clear
+    float clear_color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    context->ClearRenderTargetView(render_target, clear_color);
+    context->ClearDepthStencilView(depth_stencil_view, D3D11_CLEAR_DEPTH, 1.0f, 0);
     
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glMatrixMode(GL_PROJECTION);
-    glPushMatrix();
-    glLoadIdentity();
+    // ---- Draw background (no depth write) ----
+    context->OMSetDepthStencilState(ds_disabled, 0);
+    context->VSSetShader(vs_background, NULL, 0);
+    context->PSSetShader(ps_background, NULL, 0);
+    context->IASetInputLayout(input_layout_bg);
     
-    glOrtho(-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    UINT stride = sizeof(VertexBG);
+    UINT offset = 0;
+    context->IASetVertexBuffers(0, 1, &vb_background, &stride, &offset);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->PSSetShaderResources(0, 1, &srv_background);
+    context->PSSetSamplers(0, 1, &sampler);
+    context->Draw(6, 0);
     
-    // Draw background
-    glDisable(GL_DEPTH_TEST);
-    glColor3f(COLOR_WHITE);
-    glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, background);
+    // ---- Draw player (with depth test) ----
+    context->OMSetDepthStencilState(ds_enabled, 0);
     
-    glBegin(GL_QUADS);
-    {
-        glTexCoord2f(0.0f, 1.0f); glVertex2f(-1.0f, -1.0f);
-        glTexCoord2f(1.0f, 1.0f); glVertex2f( 1.0f, -1.0f);
-        glTexCoord2f(1.0f, 0.0f); glVertex2f( 1.0f,  1.0f);
-        glTexCoord2f(0.0f, 0.0f); glVertex2f(-1.0f,  1.0f);
-    }
-    glEnd();
+    // Build MVP:  proj * view * (translate * rotateY)
+    float trans[16], rot[16], model[16], view[16], proj[16], mv[16], mvp[16];
+    MatTranslate(trans, 0.0f, player_y, -1.5f);
+    MatRotateY(rot, player_angle);
+    MatMul(model, trans, rot);
+    MatIdentity(view);
+    MatPerspective(proj, 60.0f, 1920.0f / 1080.0f, 0.1f, 100.0f);
+    MatMul(mv,  view,  model);
+    MatMul(mvp, proj,  mv);
     
-    glDisable(GL_TEXTURE_2D);
-    glEnable(GL_DEPTH_TEST);
+    // Upload constant buffer
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    context->Map(cb_per_frame, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    memcpy(mapped.pData, mvp, sizeof(mvp));
+    context->Unmap(cb_per_frame, 0);
     
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    glMatrixMode(GL_MODELVIEW);
+    RenderModel(&player, srv_model);
     
-    // Draw player
-    glLoadIdentity();
-    glTranslatef(0.0f, player_y, -1.5f);
-    glRotatef(player_angle, 0.0f, 1.0f, 0.0f);
-    
-    RenderModel(&player);
-    
-    SwapBuffers(hdc);
+    swapchain->Present(1, 0);
 }
 
+// -----------------------------------------------------------------------
+// Window proc
+// -----------------------------------------------------------------------
 LRESULT CALLBACK
 WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
-    LRESULT Result = 0;
-    
     switch(msg)
     {
         case WM_KEYDOWN:
         {
-            if(wparam == VK_ESCAPE)
-                PostQuitMessage(0);
-            if(wparam == VK_LEFT)
-                player_angle -= 5.0f;
-            if(wparam == VK_RIGHT)
-                player_angle += 5.0f;
-            if(wparam == VK_UP)
-                player_y += 0.1f;
-            if(wparam == VK_DOWN)
-                player_y -= 0.1f;
+            if(wparam == VK_ESCAPE) PostQuitMessage(0);
+            if(wparam == VK_LEFT)   player_angle -= 5.0f;
+            if(wparam == VK_RIGHT)  player_angle += 5.0f;
+            if(wparam == VK_UP)     player_y     += 0.1f;
+            if(wparam == VK_DOWN)   player_y     -= 0.1f;
         } break;
         
         case WM_CREATE:
         {
-            hdc = GetDC(hwnd);
-            SetupPixelFormat(hdc);
-            hglrc = wglCreateContext(hdc);
-            wglMakeCurrent(hdc, hglrc);
-            InitOpenGL();
-            QueryPerformanceFrequency(&perf_freq);
-            QueryPerformanceCounter(&last_time);
-            
-            background = LoadTexture("../data/textures/background.bmp");
-            player = BuildModelFromGLB("../data/models/player.glb");
-            
         } break;
         
         case WM_DESTROY:
         {
-            wglMakeCurrent(NULL, NULL);
-            wglDeleteContext(hglrc);
-            ReleaseDC(hwnd, hdc);
             PostQuitMessage(0);
         } break;
         
         case WM_SIZE:
         {
-            glViewport(0, 0, LOWORD(lparam), HIWORD(lparam));
+            // Could resize swapchain here if needed
         } break;
         
         default:
-        {
-            return DefWindowProc(hwnd, msg, wparam, lparam);
-        } break;
+        return DefWindowProc(hwnd, msg, wparam, lparam);
     }
-    
-    return(Result);
+    return 0;
 }
 
-void
-run(HINSTANCE hinstance, int show)
-{
-    WNDCLASS wc = {};
-    MSG      msg = {};
-}
-
+// -----------------------------------------------------------------------
+// Entry point
+// -----------------------------------------------------------------------
 #ifdef DEBUG
 int
 main()
@@ -315,39 +630,21 @@ WinMain(HINSTANCE hinstance, HINSTANCE hprev, LPSTR cmdline, int show)
     ShowWindow(hwnd, show);
     UpdateWindow(hwnd);
     
-    // Pump one message
-    //PeekMessage(&msg, NULL, 0, 0, PM_REMOVE);
-    //TranslateMessage(&msg);
-    //DispatchMessage(&msg);
+    InitD3D11();
+    QueryPerformanceFrequency(&perf_freq);
+    QueryPerformanceCounter(&last_time);
     
-    /*
-    if(file_exists("game.log"))
+    srv_background = LoadTextureFromFile("../data/textures/background.bmp");
+    
+    player = BuildModelFromGLB("../data/models/player.glb");
+    
+    if(player.image_data)
     {
-        delete_file("game.log");
+        srv_model = CreateSRVFromPixels(player.image_data, player.image_width, player.image_height);
+        stbi_image_free(player.image_data);
+        player.image_data = NULL;
     }
-
-// Adds colors to windows console
-#ifdef DEBUG
-HANDLE hOut = GetStdHandl(STD_OUTPUT_HANDLE);
-DWORD dwMode = 0;
-GetConsoleMode(hOut, &dwMode);
-dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-SetConsoleMode(hOut, dwMode);
-#endif
-
-// read
-int FileSize = 0;
-char* patchVersionText = read_file("version.txt", &fileSize, &transientStorage);
-if(patchVersionText)
-{
-    const int majorVersion = 1;
-    const int minorVersion = 0;
-    int patchVersion = 0;
-    patchVersion = atoi(patchVersionText);
-    sprintf(gameState->versio
-            */
     
-    /* fixed timestep game loop */
     while(msg.message != WM_QUIT)
     {
         if(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
