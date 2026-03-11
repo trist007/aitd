@@ -8,6 +8,11 @@
 #define DebugLog(fmt, ...) do { char _buf[256]; sprintf_s(_buf, sizeof(_buf), fmt, __VA_ARGS__); OutputDebugStringA(_buf); } while(0)
 #endif
 
+// Delta time
+LARGE_INTEGER perf_freq;
+LARGE_INTEGER last_time;
+float         delta_time;
+
 struct Mat4
 {
     float        m[16]; // columm major
@@ -84,6 +89,13 @@ struct Model
     Animation   *animations;
     int          animation_count;
 };
+
+// Game state
+Model player;
+float anim_time    = 0.0f;
+float player_angle = -90.0f;
+float player_y     = -0.6f;
+bool isWalking = false;
 
 static void
 Mat4FromCgltf(Mat4 *out, const float *m)
