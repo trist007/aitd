@@ -17,11 +17,17 @@ int main(void)
     GameState *game_state = &gameState;
     
     InitWindow(game_state->screenWidth, game_state->screenHeight, "Arwinian Chronicles");
+    SetWindowSize(1920, 1080);
+    SetWindowState(FLAG_WINDOW_UNDECORATED);
     
     game_state->background = LoadTexture("../data/textures/background.bmp");
     game_state->player.model = LoadModel("../data/models/Arwin2.glb");
+    //UpdateModelAnimation(game_state->player.model, game_state->player.anims[0], 0);
     
-    game_state->player.anims = LoadModelAnimations("../data/models/arwin.glb", &game_state->player.anim_count);
+    for(int i = 0; i < game_state->player.model.meshCount; i++)
+        game_state->player.model.meshes[i].boneMatrices; // just checking they exist
+    
+    game_state->player.anims = LoadModelAnimations("../data/models/Arwin2.glb", &game_state->player.anim_count);
     
     // Define the camera to look into our 3d world
     game_state->camera = { 0 };
@@ -86,6 +92,9 @@ int main(void)
         
         DrawText(TextFormat("Yaw %.2f",
                             game_state->player.yaw), 10, 50, 20, RED);
+        
+        DrawText(TextFormat("Animation %s\n",
+                            game_state->player.anims[game_state->player.anim_index].name), 10, 70, 20, RED);
         EndDrawing();
         //----------------------------------------------------------------------------------
     }

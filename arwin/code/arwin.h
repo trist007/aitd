@@ -13,9 +13,8 @@ struct Player
     Model model;
     Vector3 position;
     Vector3 velocity;
-    float yaw = 0.0f;
-    float player_angle = 0.0f;
-    bool isWalking = false;
+    float yaw;
+    bool isWalking;
     
     ModelAnimation *anims;
     float anim_time;

@@ -7,44 +7,47 @@ void
 UpdateGame(GameState *game_state, float delta_time)
 {
     Player *player = &game_state->player;
-    if(player->isWalking)
-        player->anim_index = 2;
-    else
-        player->anim_index = 1;
     
-    UpdateModelAnimation(player->model, player->anims[player->anim_index], player->anim_frame++);
+    player->velocity.x = 0.0f;
+    player->velocity.z = 0.0f;
+    player->isWalking = false;
     
-    if(game_state->player.yaw > PI32)
-        game_state->player.yaw -= 2.0f * PI32;
-    if(game_state->player.yaw < -PI32)
-        game_state->player.yaw += 2.0f * PI32;
+    if(player->yaw > PI32)
+        player->yaw -= 2.0f * PI32;
+    if(player->yaw < -PI32)
+        player->yaw += 2.0f * PI32;
     
-    float forward_x = sinf(game_state->player.yaw);
-    float forward_z = cosf(game_state->player.yaw);
+    float forward_x = sinf(player->yaw);
+    float forward_z = cosf(player->yaw);
     
-    TraceLog(LOG_INFO, "yaw: %.2f  fx: %.2f  fz: %.2f\n",
-             game_state->player.yaw, forward_x, forward_z);
-    
-    game_state->player.velocity.x = 0.0f;
-    game_state->player.velocity.z = 0.0f;
-    game_state->player.isWalking = false;
+    //TraceLog(LOG_INFO, "yaw: %.2f  fx: %.2f  fz: %.2f\n", player->yaw, forward_x, forward_z);
     
     if(IsKeyDown(KEY_UP))
     {
-        game_state->player.position.x += forward_x * PLAYER_SPEED * delta_time;
-        game_state->player.position.z += forward_z * PLAYER_SPEED * delta_time;
-        game_state->player.isWalking = true;
+        player->position.x -= forward_x * PLAYER_SPEED * delta_time;
+        player->position.z -= forward_z * PLAYER_SPEED * delta_time;
+        player->isWalking = true;
     }
     if(IsKeyDown(KEY_DOWN))
     {
-        game_state->player.position.x -= forward_x * PLAYER_SPEED * delta_time;
-        game_state->player.position.z -= forward_z * PLAYER_SPEED * delta_time;
-        game_state->player.isWalking = true;
+        player->position.x += forward_x * PLAYER_SPEED * delta_time;
+        player->position.z += forward_z * PLAYER_SPEED * delta_time;
+        player->isWalking = true;
     }
     
     if(IsKeyDown(KEY_LEFT))
-        game_state->player.yaw -= 2.0f * delta_time;
+        player->yaw += 2.0f * delta_time;
     if(IsKeyDown(KEY_RIGHT))
-        game_state->player.yaw += 2.0f * delta_time;
+        player->yaw -= 2.0f * delta_time;
     
+    int new_anim = player->isWalking ? 2 : 1;
+    if(new_anim != player->anim_index)
+    {
+        player->anim_index = new_anim;
+        player->anim_frame = 0;
+    }
+    
+    if(player->anim_frame >= player->anims[player->anim_index].frameCount)
+        player->anim_frame = 0;
+    UpdateModelAnimation(player->model, player->anims[player->anim_index], player->anim_frame++);
 }
