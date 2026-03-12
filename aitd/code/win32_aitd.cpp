@@ -6,12 +6,16 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
+
 #define CGLTF_IMPLEMENTATION
 #include "cgltf.h"
 
 #include "colors.h"
 #include "shared.cpp"
 #include "d3d.h"
+#include "aitd.cpp"
 
 // -----------------------------------------------------------------------
 // Window proc
@@ -24,20 +28,10 @@ WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         case WM_KEYDOWN:
         {
             if(wparam == VK_ESCAPE) PostQuitMessage(0);
-            if(wparam == VK_LEFT)   player_angle -= 1.0f;
-            if(wparam == VK_RIGHT)  player_angle += 1.0f;
-            if(wparam == VK_UP)
-            {
-                isWalking = true;
-                player_y     += 0.1f;
-            }
-            if(wparam == VK_DOWN)   player_y     -= 0.1f;
         } break;
         
         case WM_KEYUP:
         {
-            if(wparam == VK_UP)
-                isWalking = false;
         } break;
         
         case WM_CREATE:
@@ -97,22 +91,30 @@ WinMain(HINSTANCE hinstance, HINSTANCE hprev, LPSTR cmdline, int show)
     UpdateWindow(hwnd);
     
     InitD3D11();
+    InitSTBTrueType("fonts/liberation-mono.ttf");
+    
     QueryPerformanceFrequency(&perf_freq);
     QueryPerformanceCounter(&last_time);
     
     srv_background = LoadTextureFromFile("../data/textures/background.bmp");
     
-    player = BuildModelFromGLB("../data/models/Arwin2.glb");
+    GameState.player.model = BuildModelFromGLB("../data/models/Arwin2.glb");
     
-    if(player.image_data)
+    if(GameState.player.model.image_data)
     {
-        srv_model = CreateSRVFromPixels(player.image_data, player.image_width, player.image_height);
-        stbi_image_free(player.image_data);
-        player.image_data = NULL;
+        srv_model = CreateSRVFromPixels(GameState.player.model.image_data, GameState.player.model.image_width,
+                                        GameState.player.model.image_height);
+        stbi_image_free(GameState.player.model.image_data);
+        GameState.player.model.image_data = NULL;
     }
     
+    GameState.player.position = { 0.0f, 0.0f, -5.0f };
+    //GameState.player.yaw = PI32;
+    //GameState.player.yaw = -PI32/2;
+    GameState.player.yaw = 0.0f;
+    
     // debug - check idle animation translation keyframes
-    Animation *idle = &player.animations[1];
+    Animation *idle = &GameState.player.model.animations[1];
     for(int c = 0; c < idle->channel_count; c++)
     {
         AnimChannel *ch = &idle->channels[c];
@@ -133,8 +135,8 @@ WinMain(HINSTANCE hinstance, HINSTANCE hprev, LPSTR cmdline, int show)
         }
         else
         {
-            //Update();
-            Render();
+            UpdateGame();
+            RenderGame();
         }
     }
     

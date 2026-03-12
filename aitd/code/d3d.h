@@ -11,14 +11,20 @@
 #pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "dxgi.lib")
 
+struct FontVertex {
+    float x, y;       // screen pos
+    float u, v;       // UV into atlas
+    float r, g, b, a; // color
+};
+
 
 // -----------------------------------------------------------------------
 // D3D11 globals
 // -----------------------------------------------------------------------
 HWND                    hwnd;
-IDXGISwapChain         *swapchain;
-ID3D11Device           *device;
-ID3D11DeviceContext    *context;
+IDXGISwapChain         *swapchain; // manages the front and back buffers when call Present() flips them
+ID3D11Device           *device;    // creates buffers, textures, and shaders
+ID3D11DeviceContext    *context;   // records and submits draw commands
 ID3D11RenderTargetView *render_target;
 ID3D11DepthStencilView *depth_stencil_view;
 ID3D11Texture2D        *depth_stencil_tex;
@@ -47,27 +53,45 @@ ID3D11DepthStencilState *ds_disabled;
 ID3D11ShaderResourceView *srv_background;
 ID3D11ShaderResourceView *srv_model;
 
+// Fonts stb_truetype
+static ID3D11ShaderResourceView *FontSRV;
+static stbtt_bakedchar FontCdata[96];
+static float FontPixelHeight = 32.0f;
+stbtt_bakedchar cdata[96];
+static FontVertex FontVertexBuffer[4096];  // cpu-side staging
+static int FontVertexCount = 0;
+
+static ID3D11Buffer *FontVB;         // created once at init, D3D11_USAGE_DYNAMIC
+static ID3D11BlendState *FontBlend;
+static ID3D11VertexShader *FontVS;
+static ID3D11PixelShader *FontPS;
+static ID3D11InputLayout *FontLayout;
+static ID3D11SamplerState *FontSampler;
+static ID3D11Buffer *ScreenCB;
+
+
+
 
 // -----------------------------------------------------------------------
-// Vertex layouts
+// Vertex layouts defines the data that goes to the GPU
 // -----------------------------------------------------------------------
 struct VertexModel
 {
-    float x, y, z;
-    float u, v;
-    float r, g, b, a;
+    float x, y, z;    // position
+    float u, v;       // texture coords
+    float r, g, b, a; // color
 };
 
 struct VertexBG
 {
-    float x, y;
-    float u, v;
+    float x, y;       // 2D position
+    float u, v;       // UV for background a fullscreen quad
 };
 
 // -----------------------------------------------------------------------
 // Constant buffer layout  (must be 16-byte aligned)
 // -----------------------------------------------------------------------
-struct CBPerFrame
+struct CBPerFrame      // readable by s haders 16 floats 4x4 matrix map/update every frame
 {
     float mvp[16];
 };
@@ -77,7 +101,7 @@ struct CBPerFrame
 // Simple math helpers
 // -----------------------------------------------------------------------
 static void
-MatMul(float *out, const float *a, const float *b)
+MatMul(float *out, const float *a, const float *b) // matrix multiply
 {
     float tmp[16] = {};
     for(int col = 0; col < 4; col++)
@@ -102,7 +126,7 @@ MatTranslate(float *m, float x, float y, float z)
 }
 
 static void
-MatRotateY(float *m, float deg)
+MatRotateY(float *m, float deg)                      // rotates around y access
 {
     float r = deg * 3.14159265f / 180.0f;
     MatIdentity(m);
@@ -150,7 +174,7 @@ struct VS_OUT
 float4 color : COLOR;
 };
 
-VS_OUT VSMain(VS_IN input)
+VS_OUT VSMain(VS_IN input)                 // vertex shader
 {
     VS_OUT o;
     o.pos = mul(mvp, float4(input.pos, 1.0f));
@@ -159,7 +183,7 @@ o.color = input.color;
     return o;
 }
 
-float4 PSMain(VS_OUT input) : SV_TARGET
+float4 PSMain(VS_OUT input) : SV_TARGET    // pixel shader
 {
 return input.color;
 }
@@ -181,7 +205,7 @@ struct VS_OUT
     float2 uv  : TEXCOORD;
 };
 
-VS_OUT VSMain(VS_IN input)
+VS_OUT VSMain(VS_IN input)               // background vertex shader
 {
     VS_OUT o;
     o.pos = float4(input.pos, 0.0f, 1.0f);
@@ -195,6 +219,40 @@ float4 PSMain(VS_OUT input) : SV_TARGET
 }
 )";
 
+static const char *shader_font_src = R"(
+
+Texture2D    FontAtlas : register(t0);
+SamplerState FontSampler : register(s0);
+cbuffer ScreenCB : register(b0) { float2 ScreenSize; };
+struct VS_IN
+{
+    float2 pos : POSITION;
+    float2 uv  : TEXCOORD;
+float4 color : COLOR;
+};
+struct VS_OUT
+{
+    float4 pos : SV_POSITION;
+    float2 uv  : TEXCOORD;
+float4 color : COLOR;
+};
+VS_OUT VSMain(VS_IN input)
+{
+    VS_OUT o;
+    o.uv = input.uv;
+o.color = input.color;
+    float2 ndc = (input.pos / ScreenSize) * 2.0 - 1.0;
+    ndc.y = -ndc.y;
+    o.pos = float4(ndc, 0, 1);
+    return o;
+}
+float4 PSMain(VS_OUT input) : SV_TARGET
+{
+    float alpha = FontAtlas.Sample(FontSampler, input.uv).r;
+    //return float4(1, 1, 1, 1) * alpha; // color white
+return float4(input.color.rgb, input.color.a * alpha);
+}
+)";
 // -----------------------------------------------------------------------
 // Load texture from raw pixel data into SRV
 // -----------------------------------------------------------------------
@@ -271,7 +329,7 @@ InitD3D11(void)
     scd.SampleDesc.Count           = 1;
     scd.Windowed                   = TRUE;
     
-    D3D11CreateDeviceAndSwapChain(
+    D3D11CreateDeviceAndSwapChain(                                         // creates everything in one call
                                   NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0,
                                   NULL, 0, D3D11_SDK_VERSION,
                                   &scd, &swapchain, &device, NULL, &context
@@ -279,8 +337,8 @@ InitD3D11(void)
     
     // Render target
     ID3D11Texture2D *backbuf = NULL;
-    swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void **)&backbuf);
-    device->CreateRenderTargetView(backbuf, NULL, &render_target);
+    swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void **)&backbuf); // gets back buffer texture and wraps it in render target view
+    device->CreateRenderTargetView(backbuf, NULL, &render_target);         // the thing you actually draw into
     backbuf->Release();
     
     // Depth stencil
@@ -289,7 +347,7 @@ InitD3D11(void)
     dsd.Height           = 1080;
     dsd.MipLevels        = 1;
     dsd.ArraySize        = 1;
-    dsd.Format           = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    dsd.Format           = DXGI_FORMAT_D24_UNORM_S8_UINT;                // 24 bits for depth 8 for stencil
     dsd.SampleDesc.Count = 1;
     dsd.Usage            = D3D11_USAGE_DEFAULT;
     dsd.BindFlags        = D3D11_BIND_DEPTH_STENCIL;
@@ -307,16 +365,16 @@ InitD3D11(void)
     
     // Sampler
     D3D11_SAMPLER_DESC sampd = {};
-    sampd.Filter   = D3D11_FILTER_MIN_MAG_MIP_POINT;
-    sampd.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
-    sampd.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampd.Filter   = D3D11_FILTER_MIN_MAG_MIP_POINT; // point filtering nearest neighbor no blending between texels
+    sampd.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;     // good for pixel art or crisp textures
+    sampd.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;     // Changge to D3D11_FILTER_MIN_MAG_MIP_LINEAR for smooth filtering
     sampd.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
     device->CreateSamplerState(&sampd, &sampler);
     
     // Rasterizer (no culling for now, matches original)
     D3D11_RASTERIZER_DESC rd = {};
     rd.FillMode = D3D11_FILL_SOLID;
-    rd.CullMode = D3D11_CULL_NONE;
+    rd.CullMode = D3D11_CULL_NONE;                // no backface culling
     device->CreateRasterizerState(&rd, &raster);
     context->RSSetState(raster);
     
@@ -333,11 +391,11 @@ InitD3D11(void)
     // Compile model shader
     ID3DBlob *vs_blob = NULL, *ps_blob = NULL, *err = NULL;
     
-    D3DCompile(shader_model_src, strlen(shader_model_src), NULL, NULL, NULL,
+    D3DCompile(shader_model_src, strlen(shader_model_src), NULL, NULL, NULL, // shader compilation
                "VSMain", "vs_5_0", 0, 0, &vs_blob, &err);
     if(err) { OutputDebugStringA((char *)err->GetBufferPointer()); err->Release(); err = NULL; }
     
-    D3DCompile(shader_model_src, strlen(shader_model_src), NULL, NULL, NULL,
+    D3DCompile(shader_model_src, strlen(shader_model_src), NULL, NULL, NULL, // shader compilation
                "PSMain", "ps_5_0", 0, 0, &ps_blob, &err);
     if(err) { OutputDebugStringA((char *)err->GetBufferPointer()); err->Release(); err = NULL; }
     
@@ -435,7 +493,7 @@ RenderModel(Model *model, ID3D11ShaderResourceView *srv)
             
             if(model->bone_count > 0 && model->bone_weights)
             {
-                for(int b = 0; b < 4; b++)
+                for(int b = 0; b < 4; b++) // cpu skinning
                 {
                     float w  = model->bone_weights[vi].weights[b];
                     if(w == 0.0f) continue;
@@ -489,70 +547,225 @@ RenderModel(Model *model, ID3D11ShaderResourceView *srv)
     context->Draw(total_verts, 0);
 }
 
-// -----------------------------------------------------------------------
-// Render
-// -----------------------------------------------------------------------
-void
-Render(void)
+static void
+InitSTBTrueType(char *font_path)
 {
-    // Delta time
-    LARGE_INTEGER current_time;
-    QueryPerformanceCounter(&current_time);
-    delta_time = (float)(current_time.QuadPart - last_time.QuadPart) / (float)perf_freq.QuadPart;
-    last_time  = current_time;
+    static unsigned char font_buffer[1024*1024];
+    static unsigned char font_bitmap[512*512];
+    stbtt_fontinfo font;
     
-    // Animate
-    //if(anim_time > 1.666f)
-    //anim_time = 0.0f;
-    if(delta_time > 0.1f)
-        delta_time = 0.1f;
-    anim_time += delta_time;
-    if(isWalking)
-        UpdateAnimation(&player, 2, anim_time);
-    else
-        UpdateAnimation(&player, 1, anim_time);
+    FILE *file = fopen(font_path, "rb");
+    if (!file) return;
     
-    // Clear
-    float clear_color[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-    context->ClearRenderTargetView(render_target, clear_color);
-    context->ClearDepthStencilView(depth_stencil_view, D3D11_CLEAR_DEPTH, 1.0f, 0);
+    size_t size = fread(font_buffer, 1, sizeof(font_buffer), file);
+    fclose(file);
+    if (size == 0) return;
     
-    // ---- Draw background (no depth write) ----
-    context->OMSetDepthStencilState(ds_disabled, 0);
-    context->VSSetShader(vs_background, NULL, 0);
-    context->PSSetShader(ps_background, NULL, 0);
-    context->IASetInputLayout(input_layout_bg);
+    stbtt_InitFont(&font, font_buffer, 0);
+    stbtt_BakeFontBitmap(font_buffer, 0, FontPixelHeight,
+                         font_bitmap, 512, 512, 32, 96, FontCdata);
     
-    UINT stride = sizeof(VertexBG);
-    UINT offset = 0;
-    context->IASetVertexBuffers(0, 1, &vb_background, &stride, &offset);
-    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    context->PSSetShaderResources(0, 1, &srv_background);
-    context->PSSetSamplers(0, 1, &sampler);
-    context->Draw(6, 0);
+    D3D11_TEXTURE2D_DESC td = {};
+    td.Width            = 512;
+    td.Height           = 512;
+    td.MipLevels        = 1;
+    td.ArraySize        = 1;
+    td.Format           = DXGI_FORMAT_R8_UNORM;
+    td.SampleDesc.Count = 1;
+    td.Usage            = D3D11_USAGE_DEFAULT;
+    td.BindFlags        = D3D11_BIND_SHADER_RESOURCE;
     
-    // ---- Draw player (with depth test) ----
-    context->OMSetDepthStencilState(ds_enabled, 0);
+    D3D11_SUBRESOURCE_DATA fsd = {};
+    fsd.pSysMem     = font_bitmap;
+    fsd.SysMemPitch = 512;
     
-    // Build MVP:  proj * view * (translate * rotateY)
-    float trans[16], rot[16], model[16], view[16], proj[16], mv[16], mvp[16];
-    MatTranslate(trans, 0.0f, player_y, -1.5f);
-    MatRotateY(rot, player_angle);
-    MatMul(model, trans, rot);
-    MatIdentity(view);
-    MatPerspective(proj, 60.0f, 1920.0f / 1080.0f, 0.1f, 100.0f);
-    MatMul(mv,  view,  model);
-    MatMul(mvp, proj,  mv);
+    ID3D11Texture2D *font_tex = NULL;
+    device->CreateTexture2D(&td, &fsd, &font_tex);
+    device->CreateShaderResourceView(font_tex, NULL, &FontSRV);
+    font_tex->Release();
     
-    // Upload constant buffer
-    D3D11_MAPPED_SUBRESOURCE mapped = {};
-    context->Map(cb_per_frame, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-    memcpy(mapped.pData, mvp, sizeof(mvp));
-    context->Unmap(cb_per_frame, 0);
     
-    RenderModel(&player, srv_model);
+    // compile font shaders
+    ID3DBlob *vs_blob = NULL, *ps_blob = NULL, *err = NULL;
+    D3DCompile(shader_font_src, strlen(shader_font_src), NULL, NULL, NULL,
+               "VSMain", "vs_5_0", 0, 0, &vs_blob, &err);
+    if(err) { OutputDebugStringA((char*)err->GetBufferPointer()); err->Release(); err = NULL; }
     
-    swapchain->Present(1, 0);
+    D3DCompile(shader_font_src, strlen(shader_font_src), NULL, NULL, NULL,
+               "PSMain", "ps_5_0", 0, 0, &ps_blob, &err);
+    if(err) { OutputDebugStringA((char*)err->GetBufferPointer()); err->Release(); err = NULL; }
+    
+    device->CreateVertexShader(vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(), NULL, &FontVS);
+    device->CreatePixelShader (ps_blob->GetBufferPointer(), ps_blob->GetBufferSize(), NULL, &FontPS);
+    
+    D3D11_INPUT_ELEMENT_DESC ied_font[] =
+    {
+        { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 8, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+    };
+    device->CreateInputLayout(ied_font, 3,
+                              vs_blob->GetBufferPointer(), vs_blob->GetBufferSize(),
+                              &FontLayout);
+    if(!FontLayout) OutputDebugStringA("FontLayout creation failed\n");
+    vs_blob->Release(); ps_blob->Release();
+    
+    // font blend state (src_alpha / inv_src_alpha)
+    D3D11_BLEND_DESC bld = {};
+    bld.RenderTarget[0].BlendEnable           = TRUE;
+    bld.RenderTarget[0].SrcBlend             = D3D11_BLEND_SRC_ALPHA;
+    bld.RenderTarget[0].DestBlend            = D3D11_BLEND_INV_SRC_ALPHA;
+    bld.RenderTarget[0].BlendOp              = D3D11_BLEND_OP_ADD;
+    bld.RenderTarget[0].SrcBlendAlpha        = D3D11_BLEND_ONE;
+    bld.RenderTarget[0].DestBlendAlpha       = D3D11_BLEND_ZERO;
+    bld.RenderTarget[0].BlendOpAlpha         = D3D11_BLEND_OP_ADD;
+    bld.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    device->CreateBlendState(&bld, &FontBlend);
+    
+    // font sampler (linear, clamp - better for font atlas than point/wrap)
+    D3D11_SAMPLER_DESC sd = {};
+    sd.Filter   = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sd.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sd.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    device->CreateSamplerState(&sd, &FontSampler);
+    
+    // ScreenCB
+    D3D11_BUFFER_DESC cbd = {};
+    cbd.ByteWidth      = 16;  // float2 padded to 16 bytes for cbuffer alignment
+    cbd.Usage          = D3D11_USAGE_DYNAMIC;
+    cbd.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
+    cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    device->CreateBuffer(&cbd, NULL, &ScreenCB);
+    
+    // FontVB
+    D3D11_BUFFER_DESC vbd = {};
+    vbd.ByteWidth      = sizeof(FontVertexBuffer);
+    vbd.Usage          = D3D11_USAGE_DYNAMIC;
+    vbd.BindFlags      = D3D11_BIND_VERTEX_BUFFER;
+    vbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    device->CreateBuffer(&vbd, NULL, &FontVB);
+    
 }
 
+void EmitQuad(stbtt_aligned_quad q, float r, float g, float b, float a)
+{
+    if (FontVertexCount + 6 > 4096) return;  // overflow guard
+    
+    FontVertex *v = FontVertexBuffer + FontVertexCount;
+    
+    // triangle 1
+    v[0] = { q.x0, q.y0, q.s0, q.t0, r, g, b, a };
+    v[1] = { q.x1, q.y0, q.s1, q.t0, r, g, b, a };
+    v[2] = { q.x1, q.y1, q.s1, q.t1, r, g, b, a };
+    // triangle 2
+    v[3] = { q.x0, q.y0, q.s0, q.t0, r, g, b, a };
+    v[4] = { q.x1, q.y1, q.s1, q.t1, r, g, b, a };
+    v[5] = { q.x0, q.y1, q.s0, q.t1, r, g, b, a };
+    
+    FontVertexCount += 6;
+}
+
+void FlushFontQuads(ID3D11DeviceContext *ctx, float screen_w, float screen_h)
+{
+    if (FontVertexCount == 0) return;
+    
+    /*
+char dbg[256];
+    snprintf(dbg, sizeof(dbg), "FlushFontQuads: count=%d\n", FontVertexCount);
+    OutputDebugStringA(dbg);
+    
+    if (FontVertexCount == 0) return;
+    
+    if(!FontVB)     { OutputDebugStringA("FontVB is NULL\n");     return; }
+    if(!FontVS)     { OutputDebugStringA("FontVS is NULL\n");     return; }
+    if(!FontPS)     { OutputDebugStringA("FontPS is NULL\n");     return; }
+    if(!FontLayout) { OutputDebugStringA("FontLayout is NULL\n"); return; }
+    if(!FontSRV)    { OutputDebugStringA("FontSRV is NULL\n");    return; }
+    if(!ScreenCB)   { OutputDebugStringA("ScreenCB is NULL\n");   return; }
+    if(!FontBlend)  { OutputDebugStringA("FontBlend is NULL\n");  return; }
+    if(!FontSampler){ OutputDebugStringA("FontSampler is NULL\n");return; }
+    */
+    
+    // upload to GPU
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    ctx->Map(FontVB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+    memcpy(mapped.pData, FontVertexBuffer, FontVertexCount * sizeof(FontVertex));
+    ctx->Unmap(FontVB, 0);
+    
+    // save render state you care about (blend, shaders, topology, etc.)
+    // ... or just stomp it if this is debug-only
+    
+    // set pipeline
+    float screen_size[2] = { screen_w, screen_h };
+    //ctx->UpdateSubresource(ScreenCB, 0, NULL, &screen_size, 0, 0);
+    D3D11_MAPPED_SUBRESOURCE cb_mapped = {};
+    ctx->Map(ScreenCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &cb_mapped);
+    memcpy(cb_mapped.pData, screen_size, sizeof(screen_size));
+    ctx->Unmap(ScreenCB, 0);
+    
+    ctx->OMSetDepthStencilState(ds_disabled, 0);  // disable depth so text always draws on top
+    ctx->OMSetRenderTargets(1, &render_target, NULL);  // add this, NULL depth so nothing blocks it
+    
+    ctx->VSSetShader(FontVS, NULL, 0);
+    ctx->PSSetShader(FontPS, NULL, 0);
+    ctx->VSSetConstantBuffers(0, 1, &ScreenCB);
+    ctx->PSSetShaderResources(0, 1, &FontSRV);
+    ctx->PSSetSamplers(0, 1, &FontSampler);
+    ctx->IASetInputLayout(FontLayout);
+    
+    UINT stride = sizeof(FontVertex), offset = 0;
+    ctx->IASetVertexBuffers(0, 1, &FontVB, &stride, &offset);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    
+    ctx->OMSetBlendState(FontBlend, NULL, 0xFFFFFFFF);
+    
+    ctx->Draw(FontVertexCount, 0);
+    
+    // reset for next frame
+    ctx->OMSetDepthStencilState(ds_enabled, 0);  // disable depth so text always draws on top
+    FontVertexCount = 0;
+}
+
+void DrawDebugString(float x, float y, const char *text, float r, float g, float b, float a)
+{
+    // stbtt uses top-left origin; adjust y baseline as needed
+    float xpos = x, ypos = y;
+    
+    for (const char *c = text; *c; c++) {
+        if (*c < 32 || *c >= 128) continue;
+        stbtt_aligned_quad q;
+        // opengl_fillrule=0 for D3D (top-left origin)
+        stbtt_GetBakedQuad(FontCdata, 512, 512, *c - 32, &xpos, &ypos, &q, 1);
+        
+        EmitQuad(q, r, g, b, a);  // push into your vertex buffer
+    }
+}
+
+static void
+MatLookAt(float *m, float ex, float ey, float ez,
+          float cx, float cy, float cz)
+{
+    // forward vector eye to target
+    float fx = cx-ex, fy = cy-ey, fz = cz-ez;
+    float len = sqrtf(fx*fx + fy*fy + fz*fz);
+    fx/=len; fy/=len; fz/=len;
+    
+    // right vector forward
+    float rx = fy*0 - fz*1, ry = fz*0 - fx*0, rz = fx*1 - fy*0;
+    len = sqrtf(rx*rx + ry*ry + rz*rz);
+    rx/=len; ry/=len; rz/=len;
+    
+    float ux = ry*fz - rz*fy;
+    float uy = rz*fx - rx*fz;
+    float uz = rx*fy - ry*fx;
+    
+    MatIdentity(m);
+    m[0]=rx; m[4]=ry; m[8]=rz;
+    m[1]=ux; m[5]=uy; m[9]=uz;
+    m[2]=-fx; m[6]=-fy; m[10]=-fz;
+    m[12]=-(rx*ex+ry*ey+rz*ez);
+    m[13]=-(ux*ex+uy*ey+uz*ez);
+    m[14]= (fx*ex+fy*ey+fz*ez);
+}
 #endif //D3D_H

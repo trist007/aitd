@@ -8,6 +8,8 @@
 #define DebugLog(fmt, ...) do { char _buf[256]; sprintf_s(_buf, sizeof(_buf), fmt, __VA_ARGS__); OutputDebugStringA(_buf); } while(0)
 #endif
 
+#define PI32 3.14159265359f
+
 // Delta time
 LARGE_INTEGER perf_freq;
 LARGE_INTEGER last_time;
@@ -90,12 +92,8 @@ struct Model
     int          animation_count;
 };
 
-// Game state
-Model player;
-float anim_time    = 0.0f;
-float player_angle = -90.0f;
-float player_y     = -0.6f;
-bool isWalking = false;
+#include "aitd.h"
+game_state GameState = {};
 
 static void
 Mat4FromCgltf(Mat4 *out, const float *m)
@@ -195,7 +193,7 @@ BuildModelFromGLB(const char *filename)
             }
         }
         total_faces += (int)prim_ptr[pi]->indices->count / 3;
-        DebugLog("prim %d: num_faces: %d\n", pi, (int)prim_ptr[pi]->indices->count / 3);
+        //DebugLog("prim %d: num_faces: %d\n", pi, (int)prim_ptr[pi]->indices->count / 3);
     }
     
     model.vertex_count  = total_verts;
@@ -345,11 +343,13 @@ BuildModelFromGLB(const char *filename)
     for(int i = 0; i < 4; i++)
     {
         cgltf_node *joint = data->skins[0].joints[i];
-        DebugLog("joint[%d] %s local t: %f %f %f\n", i,
+        /*
+DebugLog("joint[%d] %s local t: %f %f %f\n", i,
                  joint->name ? joint->name : "null",
                  joint->translation[0],
                  joint->translation[1],
                  joint->translation[2]);
+        */
     }
     
     
@@ -422,8 +422,7 @@ BuildModelFromGLB(const char *filename)
     for(int c = 0; c < anim->channel_count; c++)
     {
         AnimChannel *ch = &anim->channels[c];
-        DebugLog("channel[%d] bone=%d type=%d keyframes=%d\n",
-                 c, ch->bone_index, ch->type, ch->keyframe_count);
+        DebugLog("channel[%d] bone=%d type=%d keyframes=%d\n",c, ch->bone_index, ch->type, ch->keyframe_count);
     }
     
     cgltf_free(data);
