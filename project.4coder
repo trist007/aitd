@@ -1,5 +1,5 @@
 version(2);
-project_name = "aitd";
+project_name = "arwin";
 
 patterns = {
     "*.c",
@@ -25,30 +25,30 @@ load_paths = {
 
 commands = {
     .make = {
-        .win = "C:\dev\aitd\aitd\code\build-make.bat",
-        .lin = "/home/trist007/dev/aitd/aitd/code/run.sh",
+        .win = "C:\dev\arwin\arwin\code\build-make.bat",
+        .lin = "/home/trist007/dev/arwin/arwin/code/run.sh",
         .out = "*run*",
         .footer_panel = true,
         .save_dirty_files = true,
         .cursor_at_end = false,
     },
     .run = {
-        .win = "C:\dev\aitd\aitd\code\run.bat",
-        .lin = "/home/trist007/dev/aitd/aitd/code/run.sh",
+        .win = "C:\dev\arwin\arwin\code\run.bat",
+        .lin = "/home/trist007/dev/arwin/arwin/code/run.sh",
         .out = "*run*",
         .footer_panel = true,
         .save_dirty_files = true,
         .cursor_at_end = false,
     },
     .debug = {
-        .win = "C:\dev\aitd\aitd\code\debug.bat",
+        .win = "C:\dev\arwin\arwin\code\debug.bat",
         .out = "*debug*",
         .footer_panel = true,
         .save_dirty_files = true,
         .cursor_at_end = false,
     },
     .make_clean = {
-        .win = "C:\dev\aitd\aitd\code\build-make_clean.bat",
+        .win = "C:\dev\arwin\arwin\code\build-make_clean.bat",
         .out = "*run*",
         .footer_panel = true,
         .save_dirty_files = true,
