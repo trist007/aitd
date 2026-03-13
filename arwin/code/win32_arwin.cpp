@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "arwin.cpp"
 
+#define PLAYER_MODEL "../data/models/arwin2.glb"
 //------------------------------------------------------------------------------------
 // Program main entry point
 //------------------------------------------------------------------------------------
@@ -17,21 +18,45 @@ int main(void)
     GameState *game_state = &gameState;
     
     InitWindow(game_state->screenWidth, game_state->screenHeight, "Arwinian Chronicles");
+    if(IsWindowFullscreen())
+        ToggleFullscreen();
     SetWindowSize(1920, 1080);
     SetWindowState(FLAG_WINDOW_UNDECORATED);
     
     game_state->background = LoadTexture("../data/textures/background.bmp");
-    game_state->player.model = LoadModel("../data/models/Arwin2.glb");
-    //UpdateModelAnimation(game_state->player.model, game_state->player.anims[0], 0);
+    game_state->player.model = LoadModel(PLAYER_MODEL);
+    if(!IsModelValid(game_state->player.model))
+        TraceLog(LOG_INFO, "Model is not valid\n");
+    
+    if(game_state->player.model.meshes[0].animVertices != NULL)
+        TraceLog(LOG_INFO, "Raylib setup for CPU Skinning");
+    else
+        TraceLog(LOG_INFO, "Raylib setup for GPU Skinning");
+    
     
     for(int i = 0; i < game_state->player.model.meshCount; i++)
-        game_state->player.model.meshes[i].boneMatrices; // just checking they exist
+        game_state->player.model.boneMatrices; // just checking they exist
     
-    game_state->player.anims = LoadModelAnimations("../data/models/Arwin2.glb", &game_state->player.anim_count);
+    game_state->player.anim_count = 3;
+    game_state->player.anim = LoadModelAnimations(PLAYER_MODEL, &game_state->player.anim_count);
+    
+#ifdef DEBUG
+    printf("anim_count: %d\n", game_state->player.anim_count);
+    printf("boneCount (anim): %d\n", game_state->player.anim[0].boneCount);
+    printf("keyframeCount: %d\n", game_state->player.anim[0].keyframeCount);
+    printf("boneCount (model): %d\n", game_state->player.model.skeleton.boneCount);
+    printf("boneMatrices: %p\n", game_state->player.model.boneMatrices);
+#endif
+    if(!IsModelAnimationValid(game_state->player.model, game_state->player.anim[0]))
+        TraceLog(LOG_DEBUG, "Model animation is not valid\n");
+    
+    UpdateModelAnimation(game_state->player.model,
+                         game_state->player.anim[0],
+                         IDLE);
     
     // Define the camera to look into our 3d world
     game_state->camera = { 0 };
-    game_state->camera.position = Vector3{ 8.0f, 6.0f, 5.0f }; // Camera position
+    game_state->camera.position = Vector3{ 8.0f, 3.0f, 5.0f }; // Camera position
     game_state->camera.target = Vector3{ 0.0f, 1.0f, 0.0f };      // Camera looking at point
     game_state->camera.up = Vector3{ 0.0f, 1.0f, 0.0f };          // Camera up vector (rotation towards target)
     game_state->camera.fovy = 60.0f;                                // Camera field-of-view Y
@@ -94,7 +119,10 @@ int main(void)
                             game_state->player.yaw), 10, 50, 20, RED);
         
         DrawText(TextFormat("Animation %s\n",
-                            game_state->player.anims[game_state->player.anim_index].name), 10, 70, 20, RED);
+                            game_state->player.anim[game_state->player.anim_index].name), 10, 70, 20, RED);
+        
+        DrawText(TextFormat("Raylib version: %s\n",
+                            RAYLIB_VERSION), 10, 90, 20, RED);
         EndDrawing();
         //----------------------------------------------------------------------------------
     }

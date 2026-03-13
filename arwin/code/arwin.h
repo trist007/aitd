@@ -8,6 +8,13 @@
 
 #define PI32 3.14159265359f
 
+enum playerAnimation
+{
+    TPOS = 0,
+    IDLE,
+    WALK
+};
+
 struct Player
 {
     Model model;
@@ -16,7 +23,7 @@ struct Player
     float yaw;
     bool isWalking;
     
-    ModelAnimation *anims;
+    ModelAnimation *anim;
     float anim_time;
     int anim_count;
     int anim_index;

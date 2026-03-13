@@ -40,14 +40,23 @@ UpdateGame(GameState *game_state, float delta_time)
     if(IsKeyDown(KEY_RIGHT))
         player->yaw -= 2.0f * delta_time;
     
-    int new_anim = player->isWalking ? 2 : 1;
+    int new_anim = player->isWalking ? WALK : IDLE;
     if(new_anim != player->anim_index)
     {
         player->anim_index = new_anim;
         player->anim_frame = 0;
     }
     
-    if(player->anim_frame >= player->anims[player->anim_index].frameCount)
+    player->anim_frame++;
+    if(player->anim_frame >= player->anim[player->anim_index].keyframeCount)
         player->anim_frame = 0;
-    UpdateModelAnimation(player->model, player->anims[player->anim_index], player->anim_frame++);
+#if 0
+    for(int i = 0; i < player->anim_count; i++)
+        TraceLog(LOG_INFO, "anim[%d] name: %s  frameCount: %d  boneCount: %d",
+                 i,
+                 player->anim[i].name,
+                 player->anim[i].keyframeCount,
+                 player->anim[i].boneCount);
+#endif
+    UpdateModelAnimation(player->model, player->anim[new_anim], player->anim_frame);
 }
