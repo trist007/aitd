@@ -3,12 +3,22 @@
 echo Compilation started at %date% %time%
 echo,
 
+set Raylib=..\win\lib\raylib.lib
+
 set CommonCompilerFlags=-MT -nologo -fp:fast -Gm- -GR- -EHa- -Od -Oi -WX -W4 -wd4201 -wd4100 -wd4189 -wd4244 -wd4996 -wd4456 -FC -Z7 %LuaInclude%
 
-set CommonLinkerFlags=-incremental:no -opt:ref raylib.lib user32.lib gdi32.lib winmm.lib shell32.lib kernel32.lib msvcrt.lib /NODEFAULTLIB:LIBCMT 
+set CommonLinkerFlags=-incremental:no -opt:ref %Raylib% user32.lib gdi32.lib winmm.lib shell32.lib kernel32.lib msvcrt.lib /NODEFAULTLIB:LIBCMT 
 
-cl %CommonCompilerFlags% win32_arwin.cpp /link %CommonLinkerFlags%
+IF NOT EXIST .\..\build mkdir ..\..\build
+pushd ..\..\build
+
+REM delete pdb because debugger maintains a lock on pdb so pdb cannot be overwritten
+del *.pdb > NUL 2> NUL
+
+cl %CommonCompilerFlags% ..\arwin\code\win32_arwin.cpp /link %CommonLinkerFlags%
 REM/Fe:win32_arwin.exe
+
+popd
 
 echo.
 if %errorlevel% equ 0 (
