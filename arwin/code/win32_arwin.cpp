@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include "arwin.cpp"
 
-#define PLAYER_MODEL "../data/models/arwin2.glb"
+#define PLAYER_MODEL "../data/models/arwin4.glb"
 //------------------------------------------------------------------------------------
 // Program main entry point
 //------------------------------------------------------------------------------------
@@ -51,8 +51,8 @@ int main(void)
         TraceLog(LOG_DEBUG, "Model animation is not valid\n");
     
     UpdateModelAnimation(game_state->player.model,
-                         game_state->player.anim[0],
-                         IDLE);
+                         game_state->player.anim[IDLE],
+                         game_state->player.anim_frame);
     
     // Define the camera to look into our 3d world
     game_state->camera = { 0 };
@@ -104,25 +104,30 @@ int main(void)
         
         EndMode3D();
         
-        DrawText(TextFormat("Position %.2f %.2f %.2f",
-                            game_state->player.position.x,
-                            game_state->player.position.y,
-                            game_state->player.position.z), 10, 10, 20, RED);
         
-        DrawText(TextFormat("Velocity %.2f %.2f %.2f",
-                            game_state->player.position.x,
-                            game_state->player.position.y,
-                            game_state->player.position.z), 10, 30, 20, RED);
+        DrawText("Pos",                                             40,  10,  20, BLACK);
+        DrawText("Velocity",                                        120, 10,  20, BLACK);
+        DrawText(TextFormat("X: "),                                 10,  30,  20, BLACK);
+        DrawText(TextFormat("%.2f", game_state->player.position.x), 40,  30,  20, BLACK);
+        DrawText(TextFormat("%.2f", game_state->player.velocity.x), 120, 30,  20, BLACK);
         
+        DrawText(TextFormat("Y: "),                                 10,  50,  20, BLACK);
+        DrawText(TextFormat("%.2f", game_state->player.position.y), 40,  50,  20, BLACK);
+        DrawText(TextFormat("%.2f", game_state->player.velocity.y), 120, 50,  20, BLACK);
+        
+        
+        DrawText(TextFormat("Z: "),                                 10,  70,  20, BLACK);
+        DrawText(TextFormat("%.2f", game_state->player.position.z), 40,  70,  20, BLACK);
+        DrawText(TextFormat("%.2f", game_state->player.velocity.z), 120, 70,  20, BLACK);
         
         DrawText(TextFormat("Yaw %.2f",
-                            game_state->player.yaw), 10, 50, 20, RED);
+                            game_state->player.yaw), 10, 100, 20, BLACK);
         
         DrawText(TextFormat("Animation %s\n",
-                            game_state->player.anim[game_state->player.anim_index].name), 10, 70, 20, RED);
+                            game_state->player.anim[game_state->player.anim_index].name), 10, 120, 20, BLACK);
         
         DrawText(TextFormat("Raylib version: %s\n",
-                            RAYLIB_VERSION), 10, 90, 20, RED);
+                            RAYLIB_VERSION), 10, 140, 20, BLACK);
         EndDrawing();
         //----------------------------------------------------------------------------------
     }

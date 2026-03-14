@@ -3,14 +3,15 @@
 #ifndef ARWIN_H
 #define ARWIN_H
 
-#define PLAYER_SPEED 2.0f
-#define PLAYER_ACCELERATION 1.0f
+#define PLAYER_MAX_SPEED 5.0f
+#define PLAYER_ACCELERATION 20.0f
+#define PLAYER_DECELERATION 10.0f
 
 #define PI32 3.14159265359f
 
 enum playerAnimation
 {
-    TPOS = 0,
+    TPOSE = 0,
     IDLE,
     WALK
 };
