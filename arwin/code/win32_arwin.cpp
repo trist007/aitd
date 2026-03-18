@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include "arwin.cpp"
 
-#define PLAYER_MODEL "../data/models/arwin4.glb"
+#define PLAYER_MODEL "../arwin/data/models/arwin-sick.glb"
 //------------------------------------------------------------------------------------
 // Program main entry point
 //------------------------------------------------------------------------------------
@@ -23,7 +23,7 @@ int main(void)
     SetWindowSize(1920, 1080);
     SetWindowState(FLAG_WINDOW_UNDECORATED);
     
-    game_state->background = LoadTexture("../data/textures/background.bmp");
+    game_state->background = LoadTexture("../arwin/data/textures/background.bmp");
     game_state->player.model = LoadModel(PLAYER_MODEL);
     if(!IsModelValid(game_state->player.model))
         TraceLog(LOG_INFO, "Model is not valid\n");
@@ -37,7 +37,7 @@ int main(void)
     for(int i = 0; i < game_state->player.model.meshCount; i++)
         game_state->player.model.boneMatrices; // just checking they exist
     
-    game_state->player.anim_count = 3;
+    game_state->player.anim_count = 2;
     game_state->player.anim = LoadModelAnimations(PLAYER_MODEL, &game_state->player.anim_count);
     
 #ifdef DEBUG

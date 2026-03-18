@@ -20,27 +20,27 @@ UpdateGame(GameState *game_state, float delta_time)
     float forward_x = sinf(player->yaw);
     float forward_z = cosf(player->yaw);
     
-    float wish_x = 0.0f;
-    float wish_y = 0.0f;
-    float wish_z = 0.0f;
+    float input_x = 0.0f;
+    float input_y = 0.0f;
+    float input_z = 0.0f;
     
     if(IsKeyDown(KEY_UP))
     {
-        wish_x -= forward_x;
-        wish_z -= forward_z;
+        input_x += forward_x;
+        input_z += forward_z;
         player->isWalking = true;
     }
     if(IsKeyDown(KEY_DOWN))
     {
-        wish_x += forward_x;
-        wish_z += forward_z;
+        input_x -= forward_x;
+        input_z -= forward_z;
         player->isWalking = true;
     }
     
     if(player->isWalking)
     {
-        player->velocity.x += wish_x * PLAYER_ACCELERATION * delta_time;
-        player->velocity.z += wish_z * PLAYER_ACCELERATION * delta_time;
+        player->velocity.x += input_x * PLAYER_ACCELERATION * delta_time;
+        player->velocity.z += input_z * PLAYER_ACCELERATION * delta_time;
         
         // Clamp to max speed
         float speed = sqrtf(player->velocity.x * player->velocity.x +
@@ -89,6 +89,6 @@ UpdateGame(GameState *game_state, float delta_time)
     player->anim_frame++;
     if(player->anim_frame >= player->anim[player->anim_index].keyframeCount)
         player->anim_frame = 0;
-    UpdateModelAnimation(player->model, player->anim[new_anim], player->anim_frame);
+    UpdateModelAnimation(player->model, player->anim[player->anim_index], player->anim_frame);
     
 }
