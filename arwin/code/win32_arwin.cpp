@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include "arwin.cpp"
 
-#define PLAYER_MODEL "../arwin/data/models/arwin-sick.glb"
+#define PLAYER_MODEL "../arwin/data/models/arwin4.glb"
 //------------------------------------------------------------------------------------
 // Program main entry point
 //------------------------------------------------------------------------------------
@@ -53,6 +53,11 @@ int main(void)
     UpdateModelAnimation(game_state->player.model,
                          game_state->player.anim[IDLE],
                          game_state->player.anim_frame);
+    
+    InitRoom(game_state, ROOM_1);
+    
+    // Player starting position
+    game_state->player.position = { 2.0f, 0.0f, -2.0f };
     
     // Define the camera to look into our 3d world
     game_state->camera = { 0 };
@@ -126,8 +131,11 @@ int main(void)
         DrawText(TextFormat("Animation %s\n",
                             game_state->player.anim[game_state->player.anim_index].name), 10, 120, 20, BLACK);
         
+        DrawText(TextFormat("Animation frame %d\n",
+                            game_state->player.anim_frame), 10, 140, 20, BLACK);
+        
         DrawText(TextFormat("Raylib version: %s\n",
-                            RAYLIB_VERSION), 10, 140, 20, BLACK);
+                            RAYLIB_VERSION), 10, 160, 20, BLACK);
         EndDrawing();
         //----------------------------------------------------------------------------------
     }

@@ -7,7 +7,7 @@ Blender export
 5. Armature - check use rest position, leave all other options Unchecked
 6. Skinning - bone influences 4 leave "Include all bone influences" unchecked, if you check this one it will mess up the mesh entirely
 7. Animation - Mode - NLA Tracks
-8. Rest & Ranges - Set all glTF Animations Starting at 0 rest unchecked
+8. Rest & Ranges - All options unchecked
 9. Armature - both checked (export all armature actions and reset pose bones)
 10. No Sampling Animations - you can sample though it will not mess it up
 11. No Optimize Animations - you can optimize it will not mess it up

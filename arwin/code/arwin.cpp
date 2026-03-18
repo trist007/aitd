@@ -1,4 +1,46 @@
 #include "arwin.h"
+// -----------------------------------------------------------------------
+// Initialization
+// -----------------------------------------------------------------------
+void
+InitRoom(GameState *game_state, int room_id)
+{
+    switch(room_id)
+    {
+        case ROOM_1:
+        {
+            game_state->room[room_id].wall_count = 2;
+            game_state->room[room_id].wall[0] = { {-1.80f, 7.77f}, {1.89f,-8.98f} }; 
+            game_state->room[room_id].wall[1] = { {1.89f,-8.98}, {6.67f, -0.66f} }; 
+            game_state->currentRoom = ROOM_1;
+        } break;
+        
+        default:
+        {
+            TraceLog(LOG_WARNING, "InitRoom:, unknown room_id: %d", room_id);
+        } break;
+    }
+}
+
+void
+CheckPlayerCollisions(Player *player, Room *room, float delta_time)
+{
+    Vector2 player_xz = { player->position.x, player->position.z };
+    
+    for(int i = 0;
+        i < room->wall_count;
+        i++)
+    {
+        if(CheckCollisionPointLine(player_xz, room->wall[i].start, room->wall[i].end, 1))
+        {
+            player->position.x -= player->velocity.x * delta_time;
+            player->position.z -= player->velocity.z * delta_time;
+            player->velocity.x = 0.0f;
+            player->velocity.z = 0.0f;
+            break;
+        }
+    }
+}
 
 // -----------------------------------------------------------------------
 // Update
@@ -11,6 +53,7 @@ UpdateGame(GameState *game_state, float delta_time)
     //player->velocity.x = 0.0f;
     //player->velocity.z = 0.0f;
     player->isWalking = false;
+    player->isSearching = false;
     
     if(player->yaw > PI32)
         player->yaw -= 2.0f * PI32;
@@ -29,12 +72,19 @@ UpdateGame(GameState *game_state, float delta_time)
         input_x += forward_x;
         input_z += forward_z;
         player->isWalking = true;
+        player->isSearching = false;
     }
     if(IsKeyDown(KEY_DOWN))
     {
         input_x -= forward_x;
         input_z -= forward_z;
         player->isWalking = true;
+        player->isSearching = false;
+    }
+    if(IsKeyDown(KEY_SPACE))
+    {
+        player->isSearching = true;
+        player->isWalking = false;
     }
     
     if(player->isWalking)
@@ -75,20 +125,41 @@ UpdateGame(GameState *game_state, float delta_time)
     if(IsKeyDown(KEY_RIGHT))
         player->yaw -= 2.0f * delta_time;
     
+    // Updating position
     player->position.x += player->velocity.x * delta_time;
     player->position.y += player->velocity.y * delta_time;
     player->position.z += player->velocity.z * delta_time;
     
+    CheckPlayerCollisions(player, &game_state->room[game_state->currentRoom], delta_time);
+    
     int new_anim = player->isWalking ? WALK : IDLE;
-    if(new_anim != player->anim_index)
+    
+    if(player->isSearching)
     {
-        player->anim_index = new_anim;
-        player->anim_frame = 0;
+        new_anim = SEARCH;
+        if(new_anim != player->anim_index)
+        {
+            player->anim_index = SEARCH;
+            player->anim_frame = 0;
+        }
+        
+        // Clamping to last frame of SEARCH
+        if(player->anim_frame < player->anim[SEARCH].keyframeCount - 1)
+            player->anim_frame++;
+    }
+    else
+    {
+        if(new_anim != player->anim_index)
+        {
+            player->anim_index = new_anim;
+            player->anim_frame = 0;
+        }
+        
+        player->anim_frame++;
+        if(player->anim_frame >= player->anim[player->anim_index].keyframeCount)
+            player->anim_frame = 0;
     }
     
-    player->anim_frame++;
-    if(player->anim_frame >= player->anim[player->anim_index].keyframeCount)
-        player->anim_frame = 0;
     UpdateModelAnimation(player->model, player->anim[player->anim_index], player->anim_frame);
     
 }
