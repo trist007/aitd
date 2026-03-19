@@ -61,9 +61,9 @@ int main(void)
     
     // Player starting position
     game_state->player.position = { 3.0f, 0.0f, 7.0f };
-    game_state->player.length = 0.2f;
-    game_state->player.width = 0.3f;
-    game_state->player.height = 3.0f;
+    game_state->player.length = 0.5f;
+    game_state->player.width = 0.6f;
+    game_state->player.height = 2.2f;
     
     // Define the camera to look into our 3d world
     game_state->camera = { 0 };

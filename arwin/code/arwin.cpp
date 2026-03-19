@@ -3,6 +3,17 @@
 // -----------------------------------------------------------------------
 // Initialization
 // -----------------------------------------------------------------------
+Vector2
+dist(Vector2 a, Vector2 b)
+{
+    Vector2 Result;
+    
+    Result.x = a.x - b.x;
+    Result.y = a.y - b.y;
+    
+    return(Result);
+}
+
 void
 InitRoom(GameState *game_state, int room_id)
 {
@@ -11,10 +22,6 @@ InitRoom(GameState *game_state, int room_id)
         case ROOM_1:
         {
             game_state->room[room_id].wall_count = 3;
-            //game_state->room[room_id].wall[0] = { {-2.2f, 0.0f, 7.90f}, {1.65f, 0.0f, -9.30f} }; 
-            //game_state->room[room_id].wall[1] = { {1.65f, 0.0f,-9.30}, {6.90f, 0.0f, -0.66f} }; 
-            //game_state->room[room_id].wall[0] = { {-9.0f, 0.0f, 4.65f}, {5.72f, 0.0f, 0.30f} }; 
-            //game_state->room[room_id].wall[1] = { {5.72f, 0.0f,0.30}, {7.70f, 0.0f, 9.00f} }; 
             game_state->room[room_id].wall[0] = { {-7.85f, 0.0f, 6.95f}, {4.88f, 0.0f, 4.82f} }; 
             game_state->room[room_id].wall[1] = { {4.88f, 0.0f, 4.82}, {4.77f, 0.0f, 9.19f} }; 
             game_state->room[room_id].wall[2] = { {4.77f, 0.0f, 9.18f}, {-5.49f, 0.0f, 10.19f} }; 
@@ -28,31 +35,88 @@ InitRoom(GameState *game_state, int room_id)
     }
 }
 
-void
-CheckPlayerWallCollisions(Player *player, Room *room, float delta_time)
+bool Rect2D_IntersectsLine(Rect2D rect, Line2D line)
 {
-    // compute where player will be next frame
-    Vector2 next_pos = { 
-        player->position.x + player->velocity.x * delta_time,
-        player->position.z + player->velocity.z * delta_time
-    };
+    // Translate so rect is centered at origin
+    float ax = line.a.x - rect.x;
+    float az = line.a.y - rect.z;
+    float bx = line.b.x - rect.x;
+    float bz = line.b.y - rect.z;
     
-    for(int i = 0;
-        i < room->wall_count;
-        i++)
+    // AABB axes reject if segment is fully outside any slab
+    if (fminf(ax, bx) > rect.w || fmaxf(ax, bx) < - rect.w) return(0);
+    if (fminf(az, bz) > rect.h || fmaxf(az, bz) < - rect.h) return(0);
+    
+    // Check if rect is on one side of the line
+    float dx = bx - ax;
+    float dz = bz - az;
+    
+    // Normal of the segment, check signed distances of rect corners
+    float n0 = dx * (rect.w - ax) - dz *  (rect.h - az);
+    float n1 = dx * (rect.w - ax) - dz * (-rect.h - az);
+    float n2 = dx *(-rect.w - ax) - dz *  (rect.h - az);
+    float n3 = dx *(-rect.w - ax) - dz * (-rect.h - az);
+    
+    if (n0 > 0 && n1 > 0 && n2 > 0 && n3 > 0) return(0);
+    if (n0 < 0 && n1 < 0 && n2 < 0 && n3 < 0) return(0);
+    
+    return(1);
+}
+
+bool
+CheckPlayerWallMinkowskiCollision(Player *player, Vector3 *next_position, Wall *wall, Vector3 *push)
+{
+    // Player position
+    Vector2 playerPosition = { next_position->x, next_position->z };
+    
+    // Wall line
+    Vector2 wallLine = { wall->end.x - wall->start.x, wall->end.z - wall->start.z };
+    float wallLineLength = sqrtf(wallLine.x * wallLine.x + wallLine.y * wallLine.y);
+    
+    // Wall tangent and normal
+    Vector2 tangent = { wallLine.x / wallLineLength, wallLine.y / wallLineLength };
+    Vector2 normal = { -tangent.y, tangent.x };
+    
+    // Project player center onto wall axes
+    Vector2 projectPlayerOntoWallAxes = { playerPosition.x - wall->start.x, playerPosition.y - wall->start.z };
+    float t_project = projectPlayerOntoWallAxes.x *tangent.x + projectPlayerOntoWallAxes.y * tangent.y; // along wall
+    float n_project = projectPlayerOntoWallAxes.x *normal.x + projectPlayerOntoWallAxes.y * normal.y; // perpendicular wall
+    
+    // Minkowski sum by expanding wall segment by player half-extents, project player rect extents onto each wall axis
+    float extent_t = fabsf(player->width / 2 * tangent.x) + fabsf(player->length / 2 * tangent.y);
+    float extent_n = fabsf(player->width / 2 * normal.x) + fabsf(player->length / 2 * normal.y);
+    
+    float min_t = 0.0f - extent_t;
+    float max_t = wallLineLength + extent_t;
+    float min_n = -extent_n;
+    float max_n = extent_n;
+    
+    // Check if player center is inside the Minkowski expanded wall region
+    if(t_project < min_t || t_project > max_t) return false;
+    if(n_project < min_n || n_project > max_n) return false;
+    
+    // Collision - find shallowest axis to push out
+    float overlap_n = extent_n - fabsf(n_project);
+    float overlap_t_left = t_project - min_t;
+    float overlap_t_right = max_t - t_project;
+    float overlap_t = fminf(overlap_t_left, overlap_t_right);
+    
+    if(overlap_n < overlap_t)
     {
-        if(CheckCollisionPointLine(next_pos,
-                                   Vector2{room->wall[i].start.x, room->wall[i].start.z },
-                                   Vector2{room->wall[i].end.x, room->wall[i].end.z },
-                                   1))
-        {
-            player->position.x -= player->velocity.x * delta_time;
-            player->position.z -= player->velocity.z * delta_time;
-            player->velocity.x = 0.0f;
-            player->velocity.z = 0.0f;
-            break;
-        }
+        // Push along normal, player slides along the wallLine
+        float sign = (n_project >= 0) ? 1.0f : -1.0f;
+        push->x = normal.x * overlap_n * sign;
+        push->z = normal.y * overlap_n * sign;
     }
+    else
+    {
+        // Push along tangent (hit an endpoint)
+        float sign = (t_project - (min_t + max_t) * 0.5f) >= 0 ? 1.0f : -1.0f;
+        push->x = tangent.x * overlap_t * sign;
+        push->z = tangent.y * overlap_t * sign;
+    }
+    
+    return(true);
 }
 
 // -----------------------------------------------------------------------
@@ -63,8 +127,6 @@ UpdateGame(GameState *game_state, float delta_time)
 {
     Player *player = &game_state->player;
     
-    //player->velocity.x = 0.0f;
-    //player->velocity.z = 0.0f;
     player->isWalking = false;
     player->isSearching = false;
     
@@ -138,12 +200,27 @@ UpdateGame(GameState *game_state, float delta_time)
     if(IsKeyDown(KEY_RIGHT))
         player->yaw -= 2.0f * delta_time;
     
-    // Updating position
-    player->position.x += player->velocity.x * delta_time;
-    player->position.y += player->velocity.y * delta_time;
-    player->position.z += player->velocity.z * delta_time;
+    // Collisions
     
-    CheckPlayerWallCollisions(player, &game_state->room[game_state->currentRoom], delta_time);
+    Vector3 next_position = {
+        player->position.x + player->velocity.x * delta_time,
+        player->position.y + player->velocity.y * delta_time,
+        player->position.z + player->velocity.z * delta_time
+    };
+    
+    for (int i = 0;
+         i < game_state->room[game_state->currentRoom].wall_count;
+         i++)
+    {
+        Vector3 push = {};
+        if(CheckPlayerWallMinkowskiCollision(player, &next_position, &game_state->room[game_state->currentRoom].wall[i], &push))
+        {
+            next_position.x += push.x;
+            next_position.z += push.z;
+        }
+    }
+    
+    player->position = next_position;
     
     int new_anim = player->isWalking ? WALK : IDLE;
     

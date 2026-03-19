@@ -11,6 +11,17 @@
 
 #define PI32 3.14159265359f
 
+struct Rect2D
+{
+    float x, z;
+    float w, h;
+};
+
+struct Line2D
+{
+    Vector2 a, b;
+};
+
 enum playerAnimation
 {
     TPOSE = 0,
