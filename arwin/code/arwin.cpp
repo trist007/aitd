@@ -1,4 +1,5 @@
 #include "arwin.h"
+
 // -----------------------------------------------------------------------
 // Initialization
 // -----------------------------------------------------------------------
@@ -9,9 +10,14 @@ InitRoom(GameState *game_state, int room_id)
     {
         case ROOM_1:
         {
-            game_state->room[room_id].wall_count = 2;
-            game_state->room[room_id].wall[0] = { {-1.80f, 7.77f}, {1.89f,-8.98f} }; 
-            game_state->room[room_id].wall[1] = { {1.89f,-8.98}, {6.67f, -0.66f} }; 
+            game_state->room[room_id].wall_count = 3;
+            //game_state->room[room_id].wall[0] = { {-2.2f, 0.0f, 7.90f}, {1.65f, 0.0f, -9.30f} }; 
+            //game_state->room[room_id].wall[1] = { {1.65f, 0.0f,-9.30}, {6.90f, 0.0f, -0.66f} }; 
+            //game_state->room[room_id].wall[0] = { {-9.0f, 0.0f, 4.65f}, {5.72f, 0.0f, 0.30f} }; 
+            //game_state->room[room_id].wall[1] = { {5.72f, 0.0f,0.30}, {7.70f, 0.0f, 9.00f} }; 
+            game_state->room[room_id].wall[0] = { {-7.85f, 0.0f, 6.95f}, {4.88f, 0.0f, 4.82f} }; 
+            game_state->room[room_id].wall[1] = { {4.88f, 0.0f, 4.82}, {4.77f, 0.0f, 9.19f} }; 
+            game_state->room[room_id].wall[2] = { {4.77f, 0.0f, 9.18f}, {-5.49f, 0.0f, 10.19f} }; 
             game_state->currentRoom = ROOM_1;
         } break;
         
@@ -35,7 +41,10 @@ CheckPlayerWallCollisions(Player *player, Room *room, float delta_time)
         i < room->wall_count;
         i++)
     {
-        if(CheckCollisionPointLine(next_pos, room->wall[i].start, room->wall[i].end, 1))
+        if(CheckCollisionPointLine(next_pos,
+                                   Vector2{room->wall[i].start.x, room->wall[i].start.z },
+                                   Vector2{room->wall[i].end.x, room->wall[i].end.z },
+                                   1))
         {
             player->position.x -= player->velocity.x * delta_time;
             player->position.z -= player->velocity.z * delta_time;
@@ -44,12 +53,6 @@ CheckPlayerWallCollisions(Player *player, Room *room, float delta_time)
             break;
         }
     }
-    
-    // now move with adjusted velocity
-    //player->position.x += player->velocity.x * delta_time;
-    //player->position.z += player->velocity.z * delta_time;
-    
-    
 }
 
 // -----------------------------------------------------------------------

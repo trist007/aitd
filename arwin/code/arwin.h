@@ -27,8 +27,8 @@ enum RoomId
 
 struct Wall
 {
-    Vector2 start;
-    Vector2 end;
+    Vector3 start;
+    Vector3 end;
 };
 
 struct Room
@@ -43,6 +43,9 @@ struct Player
     Vector3 position;
     Vector3 velocity;
     float yaw;
+    float width;
+    float length;
+    float height;
     bool isWalking;
     bool isSearching;
     

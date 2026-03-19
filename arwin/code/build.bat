@@ -9,9 +9,9 @@ set CommonCompilerFlags=-MT -nologo -fp:fast -Gm- -GR- -EHa- -Od -Oi -WX -W4 -wd
 
 set CommonLinkerFlags=-incremental:no -opt:ref /DEBUG /PDB:win32_arwin.pdb %Raylib% user32.lib gdi32.lib winmm.lib shell32.lib kernel32.lib msvcrt.lib /NODEFAULTLIB:LIBCMT /NODEFAULTLIB:MSVCRTD
 
-echo Updating etags
-echo,
-etags *.cpp *.h raylib\*.c
+REM echo Updating etags
+REM echo,
+REM etags *.cpp *.h raylib\*.c
 
 IF NOT EXIST .\..\build mkdir ..\..\build
 pushd ..\..\build
