@@ -1,9 +1,9 @@
+#include <stdio.h>
 #include "raylib.h"
 #include "raymath.h"
-#include <stdio.h>
 #include "arwin.cpp"
 
-#define PLAYER_MODEL "../arwin/data/models/arwin4.glb"
+#define PLAYER_MODEL "../arwin/data/models/arwin8.glb"
 //------------------------------------------------------------------------------------
 // Program main entry point
 //------------------------------------------------------------------------------------
@@ -57,7 +57,7 @@ int main(void)
     InitRoom(game_state, ROOM_1);
     
     // Player starting position
-    game_state->player.position = { 2.0f, 0.0f, -2.0f };
+    game_state->player.position = { 2.0f, 0.0f, 3.0f };
     
     // Define the camera to look into our 3d world
     game_state->camera = { 0 };

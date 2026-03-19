@@ -23,15 +23,19 @@ InitRoom(GameState *game_state, int room_id)
 }
 
 void
-CheckPlayerCollisions(Player *player, Room *room, float delta_time)
+CheckPlayerWallCollisions(Player *player, Room *room, float delta_time)
 {
-    Vector2 player_xz = { player->position.x, player->position.z };
+    // compute where player will be next frame
+    Vector2 next_pos = { 
+        player->position.x + player->velocity.x * delta_time,
+        player->position.z + player->velocity.z * delta_time
+    };
     
     for(int i = 0;
         i < room->wall_count;
         i++)
     {
-        if(CheckCollisionPointLine(player_xz, room->wall[i].start, room->wall[i].end, 1))
+        if(CheckCollisionPointLine(next_pos, room->wall[i].start, room->wall[i].end, 1))
         {
             player->position.x -= player->velocity.x * delta_time;
             player->position.z -= player->velocity.z * delta_time;
@@ -40,6 +44,12 @@ CheckPlayerCollisions(Player *player, Room *room, float delta_time)
             break;
         }
     }
+    
+    // now move with adjusted velocity
+    //player->position.x += player->velocity.x * delta_time;
+    //player->position.z += player->velocity.z * delta_time;
+    
+    
 }
 
 // -----------------------------------------------------------------------
@@ -130,7 +140,7 @@ UpdateGame(GameState *game_state, float delta_time)
     player->position.y += player->velocity.y * delta_time;
     player->position.z += player->velocity.z * delta_time;
     
-    CheckPlayerCollisions(player, &game_state->room[game_state->currentRoom], delta_time);
+    CheckPlayerWallCollisions(player, &game_state->room[game_state->currentRoom], delta_time);
     
     int new_anim = player->isWalking ? WALK : IDLE;
     
