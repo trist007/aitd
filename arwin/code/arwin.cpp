@@ -119,6 +119,65 @@ CheckPlayerWallMinkowskiCollision(Player *player, Vector3 *next_position, Wall *
     return(true);
 }
 
+void
+DebugDrawMinkowski(Player *player, Vector3 *next_position, Wall *wall, Camera3D camera)
+{
+    // Wall basis
+    float wx = wall->end.x - wall->start.x;
+    float wz = wall->end.z - wall->start.z;
+    float wlen = sqrtf(wx*wx + wz*wz);
+    float tx = wx/wlen, ty = wz/wlen;
+    float nx = -ty,     ny =  tx;
+    
+    float ext_t = fabsf(player->width/2 * tx) + fabsf(player->length/2 * ty);
+    float ext_n = fabsf(player->width/2 * nx) + fabsf(player->length/2 * ny);
+    
+    float y = next_position->y; // draw at player height
+    
+    // Minkowski expanded rect corners (world space)
+    Vector3 corners[4] = {
+        { wall->start.x - tx*ext_t - nx*ext_n, y, wall->start.z - ty*ext_t - ny*ext_n },
+        { wall->end.x   + tx*ext_t - nx*ext_n, y, wall->end.z   + ty*ext_t - ny*ext_n },
+        { wall->end.x   + tx*ext_t + nx*ext_n, y, wall->end.z   + ty*ext_t + ny*ext_n },
+        { wall->start.x - tx*ext_t + nx*ext_n, y, wall->start.z - ty*ext_t + ny*ext_n },
+    };
+    
+    // Draw Minkowski expanded rect
+    for(int i = 0; i < 4; i++)
+        DrawLine3D(corners[i], corners[(i+1) % 4], RED);
+    
+    // Draw raw wall
+    DrawLine3D(
+               (Vector3){ wall->start.x, y, wall->start.z },
+               (Vector3){ wall->end.x,   y, wall->end.z   },
+               WHITE
+               );
+    
+    // Draw player rect (axis-aligned)
+    float px = next_position->x, pz = next_position->z;
+    float hw = player->width/2,  hl = player->length/2;
+    Vector3 prect[4] = {
+        { px-hw, y, pz-hl },
+        { px+hw, y, pz-hl },
+        { px+hw, y, pz+hl },
+        { px-hw, y, pz+hl },
+    };
+    for(int i = 0; i < 4; i++)
+        DrawLine3D(prect[i], prect[(i+1) % 4], BLUE);
+    
+    // Draw player center
+    DrawSphere(*next_position, 0.05f, BLUE);
+    
+    // Draw wall normal at midpoint
+    float mid_x = (wall->start.x + wall->end.x) * 0.5f;
+    float mid_z = (wall->start.z + wall->end.z) * 0.5f;
+    DrawLine3D(
+               (Vector3){ mid_x,        y, mid_z        },
+               (Vector3){ mid_x + nx,   y, mid_z + ny   },
+               GREEN
+               );
+}
+
 // -----------------------------------------------------------------------
 // Update
 // -----------------------------------------------------------------------
