@@ -1,5 +1,30 @@
 #include "arwin.h"
 
+void DrawDepthQuad(Texture2D mask, Vector3 pos, float width, float depth)
+{
+    rlPushMatrix();
+    
+    // Don't write to color buffer, only depth
+    rlColorMask(false, false, false, false);
+    rlEnableDepthTest();
+    rlEnableDepthMask();  // write to depth buffer
+    
+    rlSetTexture(mask.id);
+    
+    rlBegin(RL_QUADS);
+    rlTexCoord2f(0, 0); rlVertex3f(pos.x - width/2, pos.y, pos.z - depth/2);
+    rlTexCoord2f(1, 0); rlVertex3f(pos.x + width/2, pos.y, pos.z - depth/2);
+    rlTexCoord2f(1, 1); rlVertex3f(pos.x + width/2, pos.y, pos.z + depth/2);
+    rlTexCoord2f(0, 1); rlVertex3f(pos.x - width/2, pos.y, pos.z + depth/2);
+    rlEnd();
+    
+    rlSetTexture(0);
+    
+    // Re-enable color writing
+    rlColorMask(true, true, true, true);
+    
+    rlPopMatrix();
+}
 // -----------------------------------------------------------------------
 // Initialization
 // -----------------------------------------------------------------------
@@ -148,8 +173,8 @@ DebugDrawMinkowski(Player *player, Vector3 *next_position, Wall *wall, Camera3D 
     
     // Draw raw wall
     DrawLine3D(
-               (Vector3){ wall->start.x, y, wall->start.z },
-               (Vector3){ wall->end.x,   y, wall->end.z   },
+               Vector3{ wall->start.x, y, wall->start.z },
+               Vector3{ wall->end.x,   y, wall->end.z   },
                WHITE
                );
     
@@ -172,8 +197,8 @@ DebugDrawMinkowski(Player *player, Vector3 *next_position, Wall *wall, Camera3D 
     float mid_x = (wall->start.x + wall->end.x) * 0.5f;
     float mid_z = (wall->start.z + wall->end.z) * 0.5f;
     DrawLine3D(
-               (Vector3){ mid_x,        y, mid_z        },
-               (Vector3){ mid_x + nx,   y, mid_z + ny   },
+               Vector3{ mid_x,        y, mid_z        },
+               Vector3{ mid_x + nx,   y, mid_z + ny   },
                GREEN
                );
 }

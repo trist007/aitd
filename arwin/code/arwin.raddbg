@@ -1,5 +1,6 @@
 // raddbg 0.9.24 project file
 
+recent_file: path: "../../../directx/directx/code/win32_directx.cpp"
 recent_file: path: "arwin.cpp"
 recent_file: path: "win32_arwin.cpp"
 recent_file: path: "raylib/rmodels.c"
@@ -12,4 +13,9 @@ debug_info:
 {
   path: "C:/dev/arwin/build/win32_arwin.pdb"
   timestamp: 66209739584626
+}
+debug_info:
+{
+  path: "C:/dev/directx/build/win32_directx.pdb"
+  timestamp: 66209926507471
 }

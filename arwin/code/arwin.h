@@ -71,6 +71,9 @@ struct GameState
 {
     Player player;
     Texture2D background;
+    Texture2D furniture_overlay;
+    Texture2D furniture_overlay_back;
+    Texture2D furniture_overlay_front;
     Camera camera;
     
     int currentRoom;

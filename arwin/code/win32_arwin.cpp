@@ -25,7 +25,10 @@ int main(void)
     SetWindowSize(1920, 1080);
     SetWindowState(FLAG_WINDOW_UNDECORATED);
     
-    game_state->background = LoadTexture("../arwin/data/textures/background.bmp");
+    game_state->background = LoadTexture("../arwin/data/textures/background.png");
+    game_state->furniture_overlay_back = LoadTexture("../arwin/data/textures/furniture-overlay-back.png");
+    game_state->furniture_overlay_front = LoadTexture("../arwin/data/textures/furniture-overlay-front.png");
+    game_state->furniture_overlay = LoadTexture("../arwin/data/textures/furniture-overlay.png");
     game_state->player.model = LoadModel(PLAYER_MODEL);
     if(!IsModelValid(game_state->player.model))
         TraceLog(LOG_INFO, "Model is not valid\n");
@@ -100,13 +103,25 @@ int main(void)
         //----------------------------------------------------------------------------------
         BeginDrawing();
         
+        
         ClearBackground(RAYWHITE);
+        
         DrawTexturePro(game_state->background,
                        Rectangle{0, 0, 1024, 512},
                        Rectangle{0, 0, 1920, 1080},
                        Vector2{0, 0},
                        0.0f,
                        WHITE);
+        
+        if(game_state->player.position.z > 8.0f)
+        {
+            DrawTexturePro(game_state->furniture_overlay,
+                           Rectangle{0, 0, 1024, 512},
+                           Rectangle{0, 0, 1920, 1080},
+                           Vector2{0, 0},
+                           0.0f,
+                           WHITE);
+        }
         
         BeginMode3D(game_state->camera);
         
@@ -160,14 +175,22 @@ int main(void)
             game_state->player.position.z + game_state->player.width / 2
         };
         
-        rlDisableDepthTest();
         DrawLine3D(x_start, x_end, RED);
         DrawLine3D(y_start, y_end, RED);
         DrawLine3D(z_start, z_end, RED);
-        rlEnableDepthTest();
         
         EndMode3D();
         
+        if(game_state->player.position.z < 8.0f)
+        {
+            
+            DrawTexturePro(game_state->furniture_overlay,
+                           Rectangle{0, 0, 1024, 512},
+                           Rectangle{0, 0, 1920, 1080},
+                           Vector2{0, 0},
+                           0.0f,
+                           WHITE);
+        }
         
         DrawText("Pos",                                             40,  10,  20, BLACK);
         DrawText("Velocity",                                        120, 10,  20, BLACK);
