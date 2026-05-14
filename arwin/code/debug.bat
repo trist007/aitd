@@ -1,2 +1,3 @@
 @echo off
-raddbg build/win32_arwin.exe
+cd ..\bin
+raddbg win32_arwin.exe

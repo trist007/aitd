@@ -35,6 +35,19 @@
                 "reveal": "always",
                 "panel": "shared"
             }
+        },
+        {
+            "label": "debug",
+            "type": "shell",
+            "command": ".\\debug.bat",
+            "options": {
+                "cwd": "${workspaceFolder}/arwin/code"
+            },
+			"problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
         }
     ]
 }
