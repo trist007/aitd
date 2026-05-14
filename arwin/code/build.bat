@@ -3,8 +3,12 @@
 echo Compilation started at %date% %time%
 echo,
 
-set CommonCompilerFlags=/DEBUG -MT -nologo -fp:fast -Gm- -GR- -EHa- -Od -Oi -WX -W4 -FC -Z7 ^
--wd4201 -wd4100 -wd4189 -wd4244 -wd4996 -wd4456
+REM -MT static builds for raylib.lib
+REM -MD shared lib builds for raylib.dll
+
+set CommonCompilerFlags=/DEBUG -MD -nologo -fp:fast -Gm- -GR- -EHa- -Od -Oi -WX -W4 -FC -Z7 ^
+-wd4201 -wd4100 -wd4189 -wd4244 -wd4996 -wd4456 ^
+-DRAYLIB_DLL
 
 set CommonLinkerFlags=-incremental:no -opt:ref /PDB:win32_arwin.pdb ^
 ..\code\raylib.lib ^
@@ -14,7 +18,6 @@ REM echo Updating etags
 REM echo,
 REM etags *.cpp *.h raylib\*.c
 
-IF NOT EXIST ..\bin mkdir ..\bin
 IF NOT EXIST ..\build mkdir ..\build
 pushd ..\build
 
@@ -25,7 +28,10 @@ echo Compiling...
 cl %CommonCompilerFlags% ^
 ..\code\win32_arwin.c ^
 ..\code\arwin.c ^
-/link %CommonLinkerFlags% /out:..\bin\win32_arwin.exe"
+/link %CommonLinkerFlags% /out:win32_arwin.exe"
+
+copy ..\code\raylib.dll .
+copy ..\code\raylib.pdb .
 
 popd
 

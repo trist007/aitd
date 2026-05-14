@@ -1,3 +1,3 @@
 @echo off
-cd ..\bin
+cd ..\build
 raddbg win32_arwin.exe

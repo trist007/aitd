@@ -1,3 +1,3 @@
 @echo off
-cd ..\bin
+cd ..\build
 win32_arwin.exe
