@@ -3,7 +3,7 @@
 echo Compilation started at %date% %time%
 echo,
 
-set CommonCompilerFlags=-MT -nologo -fp:fast -Gm- -GR- -EHa- -Od -Oi -WX -W4 -FC -Z7 ^
+set CommonCompilerFlags=/DEBUG -MT -nologo -fp:fast -Gm- -GR- -EHa- -Od -Oi -WX -W4 -FC -Z7 ^
 -wd4201 -wd4100 -wd4189 -wd4244 -wd4996 -wd4456
 
 set CommonLinkerFlags=-incremental:no -opt:ref /PDB:win32_arwin.pdb ^

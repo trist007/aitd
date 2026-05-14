@@ -25,8 +25,8 @@ int main(void)
                   GetMonitorHeight(GetCurrentMonitor())/2 - 450);
     
     game_state->background = LoadTexture("../data/textures/background.png");
-    game_state->furniture_overlay_back = LoadTexture("../data/textures/furniture-overlay-back.png");
-    game_state->furniture_overlay_front = LoadTexture("../data/textures/furniture-overlay-front.png");
+    //game_state->furniture_overlay_back = LoadTexture("../data/textures/furniture-overlay-back.png");
+    //game_state->furniture_overlay_front = LoadTexture("../data/textures/furniture-overlay-front.png");
     game_state->furniture_overlay = LoadTexture("../data/textures/furniture-overlay.png");
     game_state->player.model = LoadModel(PLAYER_MODEL);
     if(!IsModelValid(game_state->player.model))
