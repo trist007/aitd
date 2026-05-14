@@ -1,0 +1,40 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "type": "shell",
+            "command": ".\\build.bat",
+            "options": {
+                "cwd": "${workspaceFolder}/arwin/code"
+            },
+           "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+			"problemMatcher": []
+        },
+        {
+            "label": "clean",
+            "type": "shell",
+            "command": "del /Q .\\bin\\*.* && del /Q .\\build\\*.*",
+            "options": {
+                "cwd": "${workspaceFolder}/arwin/"
+            },
+			"problemMatcher": []
+        },
+        {
+            "label": "run",
+            "type": "shell",
+            "command": ".\\run.bat",
+            "options": {
+                "cwd": "${workspaceFolder}/arwin/code"
+            },
+			"problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        }
+    ]
+}

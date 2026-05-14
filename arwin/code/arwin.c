@@ -47,9 +47,9 @@ InitRoom(GameState *game_state, int room_id)
         case ROOM_1:
         {
             game_state->room[room_id].wall_count = 3;
-            game_state->room[room_id].wall[0] = { {-7.85f, 0.0f, 6.95f}, {4.88f, 0.0f, 4.82f} }; 
-            game_state->room[room_id].wall[1] = { {4.88f, 0.0f, 4.82}, {4.77f, 0.0f, 9.19f} }; 
-            game_state->room[room_id].wall[2] = { {4.77f, 0.0f, 9.18f}, {-5.49f, 0.0f, 10.19f} }; 
+            game_state->room[room_id].wall[0] = (Wall){ (Vector3){-7.85f, 0.0f, 6.95f}, (Vector3){4.88f, 0.0f, 4.82f} }; 
+            game_state->room[room_id].wall[1] = (Wall){ (Vector3){4.88f, 0.0f, 4.82}, (Vector3){4.77f, 0.0f, 9.19f} }; 
+            game_state->room[room_id].wall[2] = (Wall){ (Vector3){4.77f, 0.0f, 9.18f}, (Vector3){-5.49f, 0.0f, 10.19f} }; 
             game_state->currentRoom = ROOM_1;
         } break;
         
@@ -60,7 +60,8 @@ InitRoom(GameState *game_state, int room_id)
     }
 }
 
-bool Rect2D_IntersectsLine(Rect2D rect, Line2D line)
+bool
+Rect2D_IntersectsLine(Rect2D rect, Line2D line)
 {
     // Translate so rect is centered at origin
     float ax = line.a.x - rect.x;
@@ -173,8 +174,8 @@ DebugDrawMinkowski(Player *player, Vector3 *next_position, Wall *wall, Camera3D 
     
     // Draw raw wall
     DrawLine3D(
-               Vector3{ wall->start.x, y, wall->start.z },
-               Vector3{ wall->end.x,   y, wall->end.z   },
+               (Vector3){ wall->start.x, y, wall->start.z },
+               (Vector3){ wall->end.x,   y, wall->end.z   },
                WHITE
                );
     
@@ -197,8 +198,8 @@ DebugDrawMinkowski(Player *player, Vector3 *next_position, Wall *wall, Camera3D 
     float mid_x = (wall->start.x + wall->end.x) * 0.5f;
     float mid_z = (wall->start.z + wall->end.z) * 0.5f;
     DrawLine3D(
-               Vector3{ mid_x,        y, mid_z        },
-               Vector3{ mid_x + nx,   y, mid_z + ny   },
+               (Vector3){ mid_x,        y, mid_z        },
+               (Vector3){ mid_x + nx,   y, mid_z + ny   },
                GREEN
                );
 }

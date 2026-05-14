@@ -1,10 +1,6 @@
-#include <stdio.h>
-#include "raylib.h"
-#include "raymath.h"
-#include "rlgl.h"
-#include "arwin.cpp"
+#include "arwin.h"
 
-#define PLAYER_MODEL "../arwin/data/models/arwin8.glb"
+#define PLAYER_MODEL "../data/models/arwin4.glb"
 //------------------------------------------------------------------------------------
 // Program main entry point
 //------------------------------------------------------------------------------------
@@ -12,23 +8,26 @@ int main(void)
 {
     // Initialization
     //--------------------------------------------------------------------------------------
-    const int screenWidth = 1920;
-    const int screenHeight = 1080;
+    const int screenWidth = 1600;
+    const int screenHeight = 900;
     
-    GameState gameState = {};
+    GameState gameState = { 0 };
     GameState *game_state = &gameState;
     
-    InitWindow(game_state->screenWidth, game_state->screenHeight, "Arwinian Chronicles");
-    if(IsWindowFullscreen())
-        ToggleFullscreen();
+    InitWindow(1600, 900, "Arwinian Chronicles");
+    // Make sure we are in normal windowed mode
+    SetWindowState(FLAG_WINDOW_RESIZABLE);           // optional
+    ClearWindowState(FLAG_FULLSCREEN_MODE);
+    ClearWindowState(FLAG_BORDERLESS_WINDOWED_MODE);
+
+    SetWindowSize(1600, 900);
+    SetWindowPosition(GetMonitorWidth(GetCurrentMonitor())/2 - 800,
+                  GetMonitorHeight(GetCurrentMonitor())/2 - 450);
     
-    SetWindowSize(1920, 1080);
-    SetWindowState(FLAG_WINDOW_UNDECORATED);
-    
-    game_state->background = LoadTexture("../arwin/data/textures/background.png");
-    game_state->furniture_overlay_back = LoadTexture("../arwin/data/textures/furniture-overlay-back.png");
-    game_state->furniture_overlay_front = LoadTexture("../arwin/data/textures/furniture-overlay-front.png");
-    game_state->furniture_overlay = LoadTexture("../arwin/data/textures/furniture-overlay.png");
+    game_state->background = LoadTexture("../data/textures/background.png");
+    game_state->furniture_overlay_back = LoadTexture("../data/textures/furniture-overlay-back.png");
+    game_state->furniture_overlay_front = LoadTexture("../data/textures/furniture-overlay-front.png");
+    game_state->furniture_overlay = LoadTexture("../data/textures/furniture-overlay.png");
     game_state->player.model = LoadModel(PLAYER_MODEL);
     if(!IsModelValid(game_state->player.model))
         TraceLog(LOG_INFO, "Model is not valid\n");
@@ -63,20 +62,20 @@ int main(void)
     InitRoom(game_state, ROOM_1);
     
     // Player starting position
-    game_state->player.position = { 3.0f, 0.0f, 7.0f };
+    game_state->player.position = (Vector3){ 3.0f, 0.0f, 7.0f };
     game_state->player.length = 0.5f;
     game_state->player.width = 0.6f;
     game_state->player.height = 2.2f;
     
     // Define the camera to look into our 3d world
-    game_state->camera = { 0 };
-    //game_state->camera.position = Vector3{ 8.0f, 3.0f, 5.0f }; // Camera position
-    //game_state->camera.position = Vector3{ 0.0f, 3.0f, 10.0f }; // Camera position
-    game_state->camera.position = Vector3{ -0.65f, 7.0f, 14.0f }; // Camera position
-    //game_state->camera.target = Vector3{ 0.0f, 1.0f, 0.0f };   // Camera looking at point
-    game_state->camera.target = Vector3{ -0.65f, 0.0f, 4.65f };   // Camera looking at point
-    //game_state->camera.up = Vector3{ 0.0f, 1.0f, 0.0f };       // Camera up vector (rotation toward target)
-    game_state->camera.up = Vector3{ 0.0f, 1.0f, 0.0f };       // Camera up vector (rotation toward target)
+    game_state->camera = (Camera){ 0 };
+    //game_state->camera.position = (Vector3){ 8.0f, 3.0f, 5.0f }; // Camera position
+    //game_state->camera.position = (Vector3){ 0.0f, 3.0f, 10.0f }; // Camera position
+    game_state->camera.position = (Vector3){ -0.65f, 7.0f, 14.0f }; // Camera position
+    //game_state->camera.target = (Vector3){ 0.0f, 1.0f, 0.0f };   // Camera looking at point
+    game_state->camera.target = (Vector3){ -0.65f, 0.0f, 4.65f };   // Camera looking at point
+    //game_state->camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };       // Camera up vector (rotation toward target)
+    game_state->camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };       // Camera up vector (rotation toward target)
     //game_state->camera.fovy = 60.0f;                           // Camera field-of-view Y
     game_state->camera.fovy = 45.0f;                           // Camera field-of-view Y
     game_state->camera.projection = CAMERA_PERSPECTIVE;        // Camera projection type
@@ -107,18 +106,18 @@ int main(void)
         ClearBackground(RAYWHITE);
         
         DrawTexturePro(game_state->background,
-                       Rectangle{0, 0, 1024, 512},
-                       Rectangle{0, 0, 1920, 1080},
-                       Vector2{0, 0},
+                       (Rectangle){0, 0, 1024, 512},
+                       (Rectangle){0, 0, 1600, 900},
+                       (Vector2){0, 0},
                        0.0f,
                        WHITE);
         
         if(game_state->player.position.z > 8.0f)
         {
             DrawTexturePro(game_state->furniture_overlay,
-                           Rectangle{0, 0, 1024, 512},
-                           Rectangle{0, 0, 1920, 1080},
-                           Vector2{0, 0},
+                           (Rectangle){0, 0, 1024, 512},
+                           (Rectangle){0, 0, 1600, 900},
+                           (Vector2){0, 0},
                            0.0f,
                            WHITE);
         }
@@ -135,9 +134,9 @@ int main(void)
         
         DrawModelEx(game_state->player.model,
                     game_state->player.position,
-                    Vector3{0,1,0},
+                    (Vector3){0,1,0},
                     game_state->player.yaw * (180.0f/PI32),
-                    Vector3{1,1,1}, WHITE);
+                    (Vector3){1,1,1}, WHITE);
         
         Vector3 x_start = { 
             game_state->player.position.x - game_state->player.length / 2,
@@ -185,9 +184,9 @@ int main(void)
         {
             
             DrawTexturePro(game_state->furniture_overlay,
-                           Rectangle{0, 0, 1024, 512},
-                           Rectangle{0, 0, 1920, 1080},
-                           Vector2{0, 0},
+                           (Rectangle){0, 0, 1024, 512},
+                           (Rectangle){0, 0, 1600, 900},
+                           (Vector2){0, 0},
                            0.0f,
                            WHITE);
         }
